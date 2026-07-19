@@ -1,0 +1,414 @@
+// ============================================================================
+// መርሃ ህይወት ሰ/ቤት — Sunday School Management System
+// Prisma Schema — shared by Student Management/Attendance and Finance dashboards
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// ENUMS
+// ----------------------------------------------------------------------------
+
+enum Role {
+  ADMINISTRATOR
+  ATTENDANCE_OFFICER
+  FINANCE_OFFICER
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ClassLevel {
+  CLASS_1_3
+  CLASS_4_6
+  CLASS_7_12
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  PERMISSION
+  LATE
+}
+
+enum EventType {
+  SUNDAY_SCHOOL
+  MEETING
+  SPECIAL_PROGRAM
+  RETREAT
+  CAMP
+  OTHER
+}
+
+enum EthiopianMonth {
+  MESKEREM
+  TIKIMT
+  HIDAR
+  TAHSAS
+  TIR
+  YEKATIT
+  MEGABIT
+  MIYAZIA
+  GINBOT
+  SENE
+  HAMLE
+  NEHASE
+  PAGUME
+}
+
+enum PaymentStatus {
+  PAID
+  UNPAID
+  PARTIAL
+}
+
+enum IncomeCategory {
+  STUDENT_FEES
+  DONATIONS
+  FUNDRAISING
+  BOOK_SALES
+  SPECIAL_PROGRAMS
+  OTHER_INCOME
+}
+
+enum ExpenseCategory {
+  TEACHING_MATERIALS
+  STATIONERY
+  SNACKS
+  TRANSPORTATION
+  EQUIPMENT
+  MAINTENANCE
+  EVENTS
+  CHARITY
+  MISCELLANEOUS
+}
+
+enum NotificationType {
+  ATTENDANCE_WARNING
+  LONG_ABSENCE
+  UPCOMING_INACTIVE
+  UNPAID_FEES
+  LARGE_EXPENSE
+  REPORT_READY
+  MISSING_PAYMENT_RECORD
+  WEEKLY_DIGEST
+}
+
+enum EventStatus {
+  UPCOMING
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+// ----------------------------------------------------------------------------
+// USERS & AUTH
+// ----------------------------------------------------------------------------
+
+model User {
+  id            String   @id @default(uuid())
+  fullName      String
+  email         String   @unique
+  passwordHash  String
+  role          Role
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  recordedIncomes   Income[]        @relation("IncomeRecordedBy")
+  recordedExpenses  Expense[]       @relation("ExpenseRecordedBy")
+  approvedExpenses  Expense[]       @relation("ExpenseApprovedBy")
+  recordedPayments  MonthlyPayment[] @relation("PaymentRecordedBy")
+  attendanceRecords Attendance[]    @relation("AttendanceRecordedBy")
+  studentsCreated   Student[]       @relation("StudentCreatedBy")
+  auditLogs         AuditLog[]
+  notifications     Notification[]
+  receiptsIssued    Receipt[]       @relation("ReceiptIssuedBy")
+
+  @@map("users")
+}
+
+// ----------------------------------------------------------------------------
+// STUDENTS & CLASSES  (owned by Attendance dashboard, read by Finance)
+// ----------------------------------------------------------------------------
+
+model ClassGroup {
+  id       String     @id @default(uuid())
+  level    ClassLevel @unique
+  name     String
+  teachers Teacher[]
+  students Student[]
+
+  @@map("class_groups")
+}
+
+model Teacher {
+  id        String       @id @default(uuid())
+  fullName  String
+  phone     String?
+  classes   ClassGroup[]
+
+  @@map("teachers")
+}
+
+model Student {
+  id                String        @id @default(uuid())
+  studentCode       String        @unique
+  fullName          String
+  fullNameAmharic   String?
+  gender            Gender
+  dateOfBirth       DateTime
+  studentPhone      String?
+  parentName        String
+  parentPhone       String
+  registrationDate  DateTime      @default(now())
+  classId           String
+  class             ClassGroup    @relation(fields: [classId], references: [id])
+  status            StudentStatus @default(ACTIVE)
+  photoUrl          String?
+  isWorkingMember   Boolean       @default(false)
+  monthlySalary     Decimal?      @db.Decimal(10, 2)
+  createdById       String?
+  createdBy         User?         @relation("StudentCreatedBy", fields: [createdById], references: [id])
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  attendanceRecords Attendance[]
+  monthlyPayments   MonthlyPayment[]
+  receipts          Receipt[]
+  inactivations     InactivationRecord[]
+  eventAttendance   EventAttendance[]
+
+  @@index([fullName])
+  @@index([parentPhone])
+  @@map("students")
+}
+
+/// Created automatically when a student hits 5 consecutive absences.
+/// The student record itself is never deleted — only its status flips to INACTIVE.
+model InactivationRecord {
+  id                    String   @id @default(uuid())
+  studentId             String
+  student               Student  @relation(fields: [studentId], references: [id])
+  consecutiveAbsentDays Int
+  lastAttendanceDate    DateTime?
+  dateMarkedInactive    DateTime @default(now())
+  reason                String   @default("5 consecutive absences")
+
+  @@index([studentId])
+  @@map("inactivation_records")
+}
+
+// ----------------------------------------------------------------------------
+// ATTENDANCE  (Attendance dashboard — schema defined now so Finance can read
+// fee status against real students; full attendance UI ships in phase 2)
+// ----------------------------------------------------------------------------
+
+model AttendanceEvent {
+  id        String      @id @default(uuid())
+  date      DateTime
+  eventType EventType   @default(SUNDAY_SCHOOL)
+  title     String?
+  records   Attendance[]
+
+  @@unique([date, eventType, title])
+  @@map("attendance_events")
+}
+
+model Attendance {
+  id           String           @id @default(uuid())
+  studentId    String
+  student      Student          @relation(fields: [studentId], references: [id])
+  eventId      String
+  event        AttendanceEvent  @relation(fields: [eventId], references: [id])
+  status       AttendanceStatus
+  recordedById String?
+  recordedBy   User?            @relation("AttendanceRecordedBy", fields: [recordedById], references: [id])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([studentId, eventId])
+  @@index([studentId])
+  @@map("attendance")
+}
+
+// ----------------------------------------------------------------------------
+// EVENTS
+// ----------------------------------------------------------------------------
+
+model Event {
+  id                 String            @id @default(uuid())
+  name               String
+  date               DateTime
+  eventType          EventType         @default(SPECIAL_PROGRAM)
+  description        String?
+  participatingClassIds String[]
+  status             EventStatus       @default(UPCOMING)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  attendance         EventAttendance[]
+
+  @@index([date])
+  @@map("events")
+}
+
+model EventAttendance {
+  id        String           @id @default(uuid())
+  eventId   String
+  event     Event            @relation(fields: [eventId], references: [id])
+  studentId String
+  student   Student          @relation(fields: [studentId], references: [id])
+  status    AttendanceStatus @default(PRESENT)
+  createdAt DateTime         @default(now())
+
+  @@unique([eventId, studentId])
+  @@map("event_attendance")
+}
+
+// ----------------------------------------------------------------------------
+// FINANCE — ETHIOPIAN CALENDAR STUDENT FEE PAYMENTS
+// ----------------------------------------------------------------------------
+
+/// One row per student per Ethiopian-calendar year captures the 13-month
+/// payment status; MonthlyPayment holds the per-month transaction detail.
+model MonthlyPayment {
+  id            String         @id @default(uuid())
+  studentId     String
+  student       Student        @relation(fields: [studentId], references: [id])
+  ethiopianYear Int
+  month         EthiopianMonth
+  status        PaymentStatus  @default(UNPAID)
+  baseAmount    Decimal        @default(0) @db.Decimal(10, 2)
+  penaltyAmount Decimal        @default(0) @db.Decimal(10, 2)
+  amount        Decimal        @db.Decimal(10, 2)
+  notes         String?
+  paidDate      DateTime?
+  recordedById  String?
+  recordedBy    User?          @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  receipts      Receipt[]
+
+  @@unique([studentId, ethiopianYear, month])
+  @@index([studentId])
+  @@map("monthly_payments")
+}
+
+model Receipt {
+  id               String          @id @default(uuid())
+  receiptNumber    String          @unique
+  studentId        String
+  student          Student         @relation(fields: [studentId], references: [id])
+  monthlyPaymentId String?
+  monthlyPayment   MonthlyPayment? @relation(fields: [monthlyPaymentId], references: [id])
+  monthsPaid       String[]
+  amount           Decimal         @db.Decimal(10, 2)
+  paymentDate      DateTime        @default(now())
+  issuedById       String
+  issuedBy         User            @relation("ReceiptIssuedBy", fields: [issuedById], references: [id])
+  createdAt        DateTime        @default(now())
+
+  @@map("receipts")
+}
+
+model ReceiptPhoto {
+  id        String   @id @default(uuid())
+  filename  String
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@map("receipt_photos")
+}
+
+// ----------------------------------------------------------------------------
+// FINANCE — INCOME & EXPENSE
+// ----------------------------------------------------------------------------
+
+model Income {
+  id           String         @id @default(uuid())
+  date         DateTime
+  amount       Decimal        @db.Decimal(10, 2)
+  category     IncomeCategory
+  description  String?
+  recordedById String
+  recordedBy   User           @relation("IncomeRecordedBy", fields: [recordedById], references: [id])
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([date])
+  @@index([category])
+  @@map("income")
+}
+
+model Expense {
+  id           String          @id @default(uuid())
+  date         DateTime
+  amount       Decimal         @db.Decimal(10, 2)
+  category     ExpenseCategory
+  description  String?
+  approvedById String?
+  approvedBy   User?           @relation("ExpenseApprovedBy", fields: [approvedById], references: [id])
+  recordedById String
+  recordedBy   User            @relation("ExpenseRecordedBy", fields: [recordedById], references: [id])
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([date])
+  @@index([category])
+  @@map("expenses")
+}
+
+// ----------------------------------------------------------------------------
+// NOTIFICATIONS
+// ----------------------------------------------------------------------------
+
+model Notification {
+  id        String           @id @default(uuid())
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  userId    String?
+  user      User?            @relation(fields: [userId], references: [id])
+  metadata  Json?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// ----------------------------------------------------------------------------
+// AUDIT LOG  (shared by both dashboards)
+// ----------------------------------------------------------------------------
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  action      String   // e.g. "PAYMENT_RECORDED", "EXPENSE_CREATED", "ATTENDANCE_EDITED"
+  entityType  String   // e.g. "MonthlyPayment", "Expense", "Student"
+  entityId    String
+  oldValue    Json?
+  newValue    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

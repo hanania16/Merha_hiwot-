@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: marha_user
+      POSTGRES_PASSWORD: marha_password
+      POSTGRES_DB: marha_hiwot
+    ports:
+      - "5432:5432"
+    volumes:
+      - marha_pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://marha_user:marha_password@db:5432/marha_hiwot?schema=public
+      JWT_SECRET: change-this-to-a-long-random-secret
+      JWT_EXPIRES_IN: 8h
+      PORT: 4000
+      CORS_ORIGIN: http://localhost:3000
+      LARGE_EXPENSE_THRESHOLD: 5000
+    ports:
+      - "4000:4000"
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+    ports:
+      - "3000:3000"
+
+volumes:
+  marha_pgdata:

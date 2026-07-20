@@ -115,8 +115,6 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
-
-
 Seed data includes one student already auto-inactivated (5 consecutive absences) and one at 4 consecutive absences (shows as "upcoming inactive" — exactly what the Saturday digest flags), so you can see the automation working immediately.
 
 ## Notes on scope

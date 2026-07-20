@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM node:20-bullseye-slim AS builder
 WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma
@@ -7,14 +7,16 @@ COPY . .
 RUN npx prisma generate
 RUN npm run build
 
-FROM node:20-alpine
+FROM node:20-bullseye-slim
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
 COPY prisma ./prisma
 COPY assets ./assets
-RUN npm install --omit=dev
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm install --include=dev
 RUN npx prisma generate
 COPY --from=builder /app/dist ./dist
 EXPOSE 4000
-CMD ["node", "dist/main"]
+CMD ["node", "dist/src/main"]

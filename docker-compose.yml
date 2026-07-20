@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: marha_password
       POSTGRES_DB: marha_hiwot
     ports:
-      - "5432:5432"
+      - "5440:5432"
     volumes:
       - marha_pgdata:/var/lib/postgresql/data
 

@@ -30,6 +30,7 @@ async function main() {
   console.log('Seeding database...');
   const passwordHash = await bcrypt.hash('Password123!', 10);
 
+  // ── Users (idempotent) ──
   const admin = await prisma.user.upsert({
     where: { email: 'admin@marhahiwot.org' },
     update: {},
@@ -46,6 +47,7 @@ async function main() {
     create: { fullName: 'Attendance Officer', email: 'attendance@marhahiwot.org', passwordHash, role: Role.ATTENDANCE_OFFICER },
   });
 
+  // ── Class groups (idempotent) ──
   const class1 = await prisma.classGroup.upsert({
     where: { level: ClassLevel.CLASS_1_3 }, update: {},
     create: { level: ClassLevel.CLASS_1_3, name: 'Class 1-3' },
@@ -60,6 +62,11 @@ async function main() {
   });
   const classes = [class1, class2, class3];
 
+  // ── Teachers (delete & re-create for idempotency) ──
+  await prisma.classGroup.update({ where: { id: class1.id }, data: { teachers: { set: [] } } });
+  await prisma.classGroup.update({ where: { id: class2.id }, data: { teachers: { set: [] } } });
+  await prisma.classGroup.update({ where: { id: class3.id }, data: { teachers: { set: [] } } });
+  await prisma.teacher.deleteMany({});
   const teacher1 = await prisma.teacher.create({ data: { fullName: 'Deacon Samuel Girma', phone: '0911000001' } });
   const teacher2 = await prisma.teacher.create({ data: { fullName: 'Sister Ruth Alemu', phone: '0911000002' } });
   const teacher3 = await prisma.teacher.create({ data: { fullName: 'Deacon Yared Tesfaye', phone: '0911000003' } });
@@ -67,15 +74,25 @@ async function main() {
   await prisma.classGroup.update({ where: { id: class2.id }, data: { teachers: { connect: { id: teacher2.id } } } });
   await prisma.classGroup.update({ where: { id: class3.id }, data: { teachers: { connect: { id: teacher3.id } } } });
 
+  // ── Students (idempotent via upsert on studentCode) ──
   const students = [];
   for (let i = 0; i < STUDENT_NAMES.length; i++) {
     const { en, am, gender } = STUDENT_NAMES[i];
     const cls = classes[i % classes.length];
-    // Two working members (adult class 7-12 members) pay 2% of salary instead of the flat fee.
     const isWorkingMember = cls.level === 'CLASS_7_12' && (i === 12 || i === 14);
-    const student = await prisma.student.create({
-      data: {
-        studentCode: `MH-${String(i + 1).padStart(4, '0')}`,
+    const studentCode = `MH-${String(i + 1).padStart(4, '0')}`;
+    const student = await prisma.student.upsert({
+      where: { studentCode },
+      update: {
+        fullName: en,
+        fullNameAmharic: am,
+        gender,
+        classId: cls.id,
+        isWorkingMember,
+        monthlySalary: isWorkingMember ? 8000 + i * 250 : null,
+      },
+      create: {
+        studentCode,
         fullName: en,
         fullNameAmharic: am,
         gender,
@@ -91,6 +108,18 @@ async function main() {
     students.push(student);
   }
 
+  // ── Clear transactional seed data before re-creating ──
+  await prisma.monthlyPayment.deleteMany({});
+  await prisma.attendance.deleteMany({});
+  await prisma.attendanceEvent.deleteMany({});
+  await prisma.inactivationRecord.deleteMany({});
+  await prisma.income.deleteMany({});
+  await prisma.expense.deleteMany({});
+  await prisma.event.deleteMany({});
+
+  // Reset all students to ACTIVE first (reapply inactive status below)
+  await prisma.student.updateMany({ data: { status: 'ACTIVE' } });
+
   // --- Monthly fee payments (Ethiopian year 2017), varied progress per student ---
   const monthsOrder: EthiopianMonth[] = [
     'MESKEREM', 'TIKIMT', 'HIDAR', 'TAHSAS', 'TIR', 'YEKATIT',
@@ -105,7 +134,7 @@ async function main() {
       ? Math.round(Number(student.monthlySalary) * WORKING_MEMBER_RATE * 100) / 100
       : CLASS_MONTHLY_FEE[cls.level];
 
-    const paidThrough = 3 + (i % 8); // vary payment progress per student
+    const paidThrough = 3 + (i % 8);
     for (let m = 0; m < paidThrough; m++) {
       await prisma.monthlyPayment.create({
         data: {
@@ -169,9 +198,9 @@ async function main() {
       const last4 = sundayIndex >= sundays.length - 4;
       const last2 = sundayIndex >= sundays.length - 2;
 
-      if (i === 1 && last5) status = 'ABSENT';        // 5 consecutive -> auto-inactive
-      else if (i === 3 && last4) status = 'ABSENT';    // 4 consecutive -> upcoming-inactive warning
-      else if (i === 5 && last2) status = 'ABSENT';    // 2 consecutive -> warning
+      if (i === 1 && last5) status = 'ABSENT';
+      else if (i === 3 && last4) status = 'ABSENT';
+      else if (i === 5 && last2) status = 'ABSENT';
       else if (i % 6 === 0) status = 'PERMISSION';
       else if (i % 7 === 0) status = 'LATE';
 

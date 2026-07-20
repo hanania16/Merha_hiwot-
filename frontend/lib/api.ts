@@ -15,6 +15,17 @@ export class ApiError extends Error {
   }
 }
 
+function extractErrorMessage(body: Record<string, unknown>, fallback: string): string {
+  if (typeof body.message === 'string') return body.message;
+  if (Array.isArray(body.message)) return body.message.join(', ');
+  if (body.message && typeof body.message === 'object') {
+    const m = body.message as Record<string, unknown>;
+    if (typeof m.message === 'string') return m.message;
+    if (Array.isArray(m.message)) return m.message.join(', ');
+  }
+  return fallback;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const res = await fetch(`${API_BASE}${path}`, {
@@ -27,11 +38,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText }));
-    throw new ApiError(
-      typeof body.message === 'string' ? body.message : JSON.stringify(body.message),
-      res.status,
-    );
+    const body = await res.json().catch(() => ({}));
+    const msg = extractErrorMessage(body, res.statusText);
+    throw new ApiError(msg, res.status);
   }
 
   if (res.status === 204) return undefined as T;

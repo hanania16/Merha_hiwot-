@@ -1,4 +1,4 @@
-# መርሃ ህይወት ሰ/ቤት — Sunday School Management System
+# መርሓ ህይወት ሰ/ቤት — Sunday School Management System
 
 A two-dashboard Church Management System for an Ethiopian Orthodox Sunday School, plus an Admin overview, sharing one PostgreSQL database.
 

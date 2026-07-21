@@ -47,11 +47,8 @@ enum AttendanceStatus {
 
 enum EventType {
   SUNDAY_SCHOOL
-  MEETING
-  SPECIAL_PROGRAM
-  RETREAT
-  CAMP
-  OTHER
+  COURSE
+  SPECIAL_OCCASIONS
 }
 
 enum EthiopianMonth {
@@ -79,10 +76,8 @@ enum PaymentStatus {
 enum IncomeCategory {
   STUDENT_FEES
   DONATIONS
-  FUNDRAISING
-  BOOK_SALES
-  SPECIAL_PROGRAMS
-  OTHER_INCOME
+  DEVELOPMENT_DEPART
+  OTHERS
 }
 
 enum ExpenseCategory {
@@ -254,7 +249,7 @@ model Event {
   id                 String            @id @default(uuid())
   name               String
   date               DateTime
-  eventType          EventType         @default(SPECIAL_PROGRAM)
+  eventType          EventType         @default(SUNDAY_SCHOOL)
   description        String?
   participatingClassIds String[]
   status             EventStatus       @default(UPCOMING)

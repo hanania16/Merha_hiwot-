@@ -226,7 +226,7 @@ async function main() {
     data: {
       name: 'Christmas Retreat',
       date: new Date(2026, 0, 6),
-      eventType: 'RETREAT',
+      eventType: 'SPECIAL_OCCASIONS',
       description: 'Annual Christmas retreat with all classes.',
       participatingClassIds: classes.map((c) => c.id),
       status: 'COMPLETED',
@@ -236,7 +236,7 @@ async function main() {
     data: {
       name: 'Summer Camp',
       date: new Date(2026, 6, 20),
-      eventType: 'CAMP',
+      eventType: 'COURSE',
       description: 'Weekend camp for Class 4-6 and Class 7-12.',
       participatingClassIds: [class2.id, class3.id],
       status: 'UPCOMING',
@@ -246,7 +246,7 @@ async function main() {
     data: {
       name: 'Teachers Meeting',
       date: new Date(2026, 7, 2),
-      eventType: 'MEETING',
+      eventType: 'SUNDAY_SCHOOL',
       description: 'Monthly Sunday School teachers coordination meeting.',
       participatingClassIds: [],
       status: 'UPCOMING',

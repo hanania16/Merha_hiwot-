@@ -7,6 +7,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { useLang } from '@/lib/i18n';
+import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
 
 interface ClassGroup { id: string; name: string; }
 interface StudentRow {
@@ -161,7 +162,7 @@ function RegisterModal({ classes, onClose, onSaved }: { classes: ClassGroup[]; o
               <option value="MALE">Male</option><option value="FEMALE">Female</option>
             </select>
           </div>
-          <div><label className="label">Date of Birth</label><input type="date" className="input" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} /></div>
+          <div><label className="label">Date of Birth</label><EthiopianDatePicker value={dateOfBirth} onChange={(d) => setDateOfBirth(d)} /></div>
         </div>
         <div><label className="label">Class</label>
           <select className="input" value={classId} onChange={(e) => setClassId(e.target.value)}>

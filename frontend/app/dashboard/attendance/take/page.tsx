@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { Topbar } from '@/components/layout/Topbar';
-import { formatEthiopianDateFromGregorian } from '@/lib/ethiopian-calendar';
+import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
 
 interface ClassGroup { id: string; name: string; }
 interface RosterEntry {
@@ -17,11 +17,8 @@ interface RosterEntry {
 
 const EVENT_TYPES = [
   { value: 'SUNDAY_SCHOOL', label: 'Sunday School' },
-  { value: 'MEETING', label: 'Meeting' },
-  { value: 'SPECIAL_PROGRAM', label: 'Special Program' },
-  { value: 'RETREAT', label: 'Retreat' },
-  { value: 'CAMP', label: 'Camp' },
-  { value: 'OTHER', label: 'Other' },
+  { value: 'COURSE', label: 'Course' },
+  { value: 'SPECIAL_OCCASIONS', label: 'Special Occasions' },
 ];
 
 const STATUS_STYLES: Record<string, string> = {
@@ -88,7 +85,7 @@ export default function TakeAttendancePage() {
 
   return (
     <div>
-      <Topbar title="Take Attendance" subtitle={`Works on any day — ${formatEthiopianDateFromGregorian(new Date(date))} (Ethiopian calendar)`} />
+      <Topbar title="Take Attendance" />
 
       <div className="card p-4 mb-6 flex flex-wrap gap-3 items-end">
         <div>
@@ -98,8 +95,8 @@ export default function TakeAttendancePage() {
           </select>
         </div>
         <div>
-          <label className="label">Date</label>
-          <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
+          <label className="label">የኢትዮጵያ ቀን</label>
+          <EthiopianDatePicker value={date} onChange={(d) => setDate(d)} />
         </div>
         <div>
           <label className="label">Event Type</label>

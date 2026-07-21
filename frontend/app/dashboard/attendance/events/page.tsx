@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { Topbar } from '@/components/layout/Topbar';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
+import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
 
 interface ClassGroup { id: string; name: string; }
 interface EventRow {
@@ -18,7 +19,7 @@ interface EventRow {
   attendanceCount: number;
 }
 
-const EVENT_TYPES = ['SUNDAY_SCHOOL', 'MEETING', 'SPECIAL_PROGRAM', 'RETREAT', 'CAMP', 'OTHER'];
+const EVENT_TYPES = ['SUNDAY_SCHOOL', 'COURSE', 'SPECIAL_OCCASIONS'];
 const STATUSES = ['UPCOMING', 'ONGOING', 'COMPLETED', 'CANCELLED'];
 
 export default function EventsPage() {
@@ -77,7 +78,7 @@ export default function EventsPage() {
 function CreateEventModal({ classes, onClose, onSaved }: { classes: ClassGroup[]; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [eventType, setEventType] = useState('SPECIAL_PROGRAM');
+  const [eventType, setEventType] = useState('SUNDAY_SCHOOL');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState('UPCOMING');
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
@@ -104,7 +105,7 @@ function CreateEventModal({ classes, onClose, onSaved }: { classes: ClassGroup[]
       <div className="space-y-3">
         <div><label className="label">Event Name</label><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></div>
         <div className="grid grid-cols-2 gap-3">
-          <div><label className="label">Date</label><input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+          <div><label className="label">Date</label><EthiopianDatePicker value={date} onChange={(d) => setDate(d)} /></div>
           <div><label className="label">Type</label>
             <select className="input" value={eventType} onChange={(e) => setEventType(e.target.value)}>
               {EVENT_TYPES.map((t) => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}

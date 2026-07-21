@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { api, downloadUrl } from '@/lib/api';
 import { Topbar } from '@/components/layout/Topbar';
 import { Badge } from '@/components/ui/Badge';
+import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
 
 interface ClassGroup { id: string; name: string; }
 
@@ -51,7 +52,7 @@ export default function AttendanceReportsPage() {
       {tab === 'daily' && (
         <>
           <div className="card p-4 mb-6 flex items-end gap-3">
-            <div><label className="label">Date</label><input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+            <div><label className="label">Date</label><EthiopianDatePicker value={date} onChange={(d) => setDate(d)} /></div>
             <button className="btn-outline" onClick={loadDaily}>Generate</button>
           </div>
           {dailyData.map((event, i) => (
@@ -107,8 +108,8 @@ export default function AttendanceReportsPage() {
       {tab === 'registration' && (
         <>
           <div className="card p-4 mb-6 flex items-end gap-3">
-            <div><label className="label">From</label><input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
-            <div><label className="label">To</label><input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+            <div><label className="label">From</label><EthiopianDatePicker value={from} onChange={(d) => setFrom(d)} /></div>
+            <div><label className="label">To</label><EthiopianDatePicker value={to} onChange={(d) => setTo(d)} /></div>
             <button className="btn-outline" onClick={loadRegistration}>Generate</button>
             <a className="btn-gold" href={downloadUrl(`/attendance/reports/registration/export/pdf?from=${from}&to=${to}`)} target="_blank" rel="noreferrer">Export PDF</a>
           </div>

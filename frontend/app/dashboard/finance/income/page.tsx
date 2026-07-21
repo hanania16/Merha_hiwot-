@@ -5,8 +5,9 @@ import { api } from '@/lib/api';
 import { formatETB } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { Modal } from '@/components/ui/Modal';
+import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
 
-const CATEGORIES = ['STUDENT_FEES', 'DONATIONS', 'FUNDRAISING', 'BOOK_SALES', 'SPECIAL_PROGRAMS', 'OTHER_INCOME'];
+const CATEGORIES = ['STUDENT_FEES', 'DONATIONS', 'DEVELOPMENT_DEPART', 'OTHERS'];
 
 interface IncomeRow {
   id: string;
@@ -33,7 +34,7 @@ export default function IncomePage() {
 
   return (
     <div>
-      <Topbar title="Income Management" subtitle="Student fees, donations, fundraising, and other income" />
+      <Topbar title="Income Management" subtitle="Student fees, donations, development department, and other income" />
 
       <div className="flex justify-end mb-4">
         <button className="btn-gold" onClick={() => setOpen(true)}>+ Record Income</button>
@@ -73,6 +74,9 @@ function IncomeFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const othersValid = category !== 'OTHERS' || description.trim().split(/\s+/).length >= 3;
+  const canSave = !saving && !!amount && othersValid;
+
   async function submit() {
     setSaving(true);
     try {
@@ -88,7 +92,7 @@ function IncomeFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
       <div className="space-y-4">
         <div>
           <label className="label">Date</label>
-          <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
+          <EthiopianDatePicker value={date} onChange={(d) => setDate(d)} />
         </div>
         <div>
           <label className="label">Category</label>
@@ -102,11 +106,17 @@ function IncomeFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
         </div>
         <div>
           <label className="label">Description</label>
+          {category === 'OTHERS' && (
+            <p className="text-xs text-gold mb-1">Please specify what kind of income this is in the description below.</p>
+          )}
           <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
+          {category === 'OTHERS' && !othersValid && (
+            <p className="text-xs text-red-500">Please enter at least 3 words describing this income.</p>
+          )}
         </div>
         <div className="flex justify-end gap-2">
           <button className="btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn-gold" disabled={saving || !amount} onClick={submit}>
+          <button className="btn-gold" disabled={!canSave} onClick={submit}>
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>

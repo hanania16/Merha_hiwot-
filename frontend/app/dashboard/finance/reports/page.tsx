@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { api, downloadUrl } from '@/lib/api';
 import { formatETB } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
+import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
 
 interface FinancialReport {
   totalIncome: number;
@@ -47,11 +48,11 @@ export default function ReportsPage() {
       <div className="card p-4 mb-6 flex flex-wrap items-end gap-3">
         <div>
           <label className="label">From</label>
-          <input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <EthiopianDatePicker value={from} onChange={(d) => setFrom(d)} />
         </div>
         <div>
           <label className="label">To</label>
-          <input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} />
+          <EthiopianDatePicker value={to} onChange={(d) => setTo(d)} />
         </div>
         <button className="btn-outline" onClick={generate} disabled={loading}>
           {loading ? 'Generating…' : 'Generate Report'}

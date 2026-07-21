@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { formatETB } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { Modal } from '@/components/ui/Modal';
+import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
 
 const CATEGORIES = [
   'TEACHING_MATERIALS', 'STATIONERY', 'SNACKS', 'TRANSPORTATION',
@@ -93,7 +94,7 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
       <div className="space-y-4">
         <div>
           <label className="label">Date</label>
-          <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
+          <EthiopianDatePicker value={date} onChange={(d) => setDate(d)} />
         </div>
         <div>
           <label className="label">Category</label>

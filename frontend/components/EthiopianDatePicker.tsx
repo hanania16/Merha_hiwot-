@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   toEthiopian,
   toGregorian,
@@ -24,7 +24,19 @@ export function EthiopianDatePicker({ value, onChange }: EthiopianDatePickerProp
   const [viewYear, setViewYear] = useState(todayEth.year);
   const [viewMonth, setViewMonth] = useState(todayEth.month);
   const [open, setOpen] = useState(false);
+  const [picker, setPicker] = useState<'days' | 'months' | 'years'>('days');
+  const [pendingMonth, setPendingMonth] = useState<number | null>(null);
+  const [pendingYear, setPendingYear] = useState<number | null>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  const years = useMemo(() => {
+    const y: number[] = [];
+    for (let i = viewYear - 50; i <= viewYear + 10; i++) y.push(i);
+    return y;
+  }, [viewYear]);
 
   useEffect(() => {
     if (value) {
@@ -39,12 +51,33 @@ export function EthiopianDatePicker({ value, onChange }: EthiopianDatePickerProp
   }, [value]);
 
   useEffect(() => {
+    if (!open) {
+      setPicker('days');
+      setPendingMonth(null);
+      setPendingYear(null);
+    }
+  }, [open]);
+
+  useEffect(() => {
     if (!open) return;
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom - 8;
+    const spaceAbove = rect.top - 8;
+    const dropdownH = 340;
+    if (spaceBelow >= dropdownH || spaceBelow >= spaceAbove) {
+      setDropdownStyle({ position: 'fixed', top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 280) });
+    } else {
+      setDropdownStyle({ position: 'fixed', bottom: window.innerHeight - rect.top + 4, left: rect.left, width: Math.max(rect.width, 280) });
+    }
   }, [open]);
 
   const notify = useCallback(
@@ -100,6 +133,7 @@ export function EthiopianDatePicker({ value, onChange }: EthiopianDatePickerProp
   return (
     <div ref={ref} className="relative w-full">
       <button
+        ref={btnRef}
         type="button"
         onClick={() => setOpen(!open)}
         className="input text-left flex items-center justify-between gap-2 w-full"
@@ -109,45 +143,112 @@ export function EthiopianDatePicker({ value, onChange }: EthiopianDatePickerProp
       </button>
 
       {open && (
-        <div className="absolute top-full mt-1 left-0 z-50 bg-white border border-gray-200 rounded-xl p-3 shadow-lg w-72">
-          <div className="flex items-center justify-between mb-2">
-            <button onClick={prevMonth} className="text-sm px-2 py-1 rounded hover:bg-mist font-bold">‹</button>
-            <div className="text-sm font-semibold text-ink">{monthLabel} {viewYear}</div>
-            <button onClick={nextMonth} className="text-sm px-2 py-1 rounded hover:bg-mist font-bold">›</button>
-          </div>
+        <div style={dropdownStyle} className="z-50 bg-white border border-gray-200 rounded-xl p-3 shadow-lg">
+          {picker === 'days' && (
+            <>
+              <div className="flex items-center justify-between mb-2">
+                <button onClick={prevMonth} className="text-sm px-2 py-1 rounded hover:bg-mist font-bold">‹</button>
+                <div className="text-sm font-semibold text-ink flex items-center gap-2">
+                  <button onClick={() => setPicker('months')} className="hover:text-gold px-1 rounded hover:bg-mist">{monthLabel}</button>
+                  <button onClick={() => setPicker('years')} className="hover:text-gold px-1 rounded hover:bg-mist">{viewYear}</button>
+                </div>
+                <button onClick={nextMonth} className="text-sm px-2 py-1 rounded hover:bg-mist font-bold">›</button>
+              </div>
 
-          {(viewYear !== todayEth.year || viewMonth !== todayEth.month) && (
-            <button
-              onClick={() => { setViewYear(todayEth.year); setViewMonth(todayEth.month); }}
-              className="text-xs text-gold hover:underline mb-2 block w-full text-center"
-            >
-              ዛሬ {todayEth.day} {ETHIOPIAN_MONTHS.find((m) => m.order === todayEth.month)?.label} {todayEth.year}
-            </button>
+              {(viewYear !== todayEth.year || viewMonth !== todayEth.month) && (
+                <button
+                  onClick={() => { setViewYear(todayEth.year); setViewMonth(todayEth.month); }}
+                  className="text-xs text-gold hover:underline mb-2 block w-full text-center"
+                >
+                  ዛሬ {todayEth.day} {ETHIOPIAN_MONTHS.find((m) => m.order === todayEth.month)?.label} {todayEth.year}
+                </button>
+              )}
+
+              <div className="grid grid-cols-7 text-center text-xs font-medium text-slate mb-1">
+                {WEEKDAYS.map((wd) => <div key={wd} className="py-1">{wd}</div>)}
+              </div>
+
+              <div className="grid grid-cols-7 text-center text-sm">
+                {cells.map((d, i) =>
+                  d !== null ? (
+                    <button
+                      key={i}
+                      onClick={() => selectDate(viewYear, viewMonth, d)}
+                      className={`py-1.5 rounded-lg transition-colors ${
+                        isSelected(viewYear, viewMonth, d)
+                          ? 'bg-gold text-white font-bold'
+                          : isToday(viewYear, viewMonth, d)
+                            ? 'bg-mist text-ink font-semibold'
+                            : 'text-ink hover:bg-mist'
+                      }`}
+                    >
+                      {d}
+                    </button>
+                  ) : <div key={i} />
+                )}
+              </div>
+            </>
           )}
 
-          <div className="grid grid-cols-7 text-center text-xs font-medium text-slate mb-1">
-            {WEEKDAYS.map((wd) => <div key={wd} className="py-1">{wd}</div>)}
-          </div>
-
-          <div className="grid grid-cols-7 text-center text-sm">
-            {cells.map((d, i) =>
-              d !== null ? (
+          {picker === 'months' && (
+            <div ref={pickerRef} className="max-h-64 overflow-y-auto space-y-1">
+              <button
+                onClick={() => { setViewYear(todayEth.year); setViewMonth(todayEth.month); setPendingMonth(null); setPicker('days'); }}
+                className="text-xs text-gold hover:underline mb-2 block w-full text-center"
+              >
+                ዛሬ {todayEth.day} {ETHIOPIAN_MONTHS.find((m) => m.order === todayEth.month)?.label} {todayEth.year}
+              </button>
+              {ETHIOPIAN_MONTHS.map((m) => (
                 <button
-                  key={i}
-                  onClick={() => selectDate(viewYear, viewMonth, d)}
-                  className={`py-1.5 rounded-lg transition-colors ${
-                    isSelected(viewYear, viewMonth, d)
-                      ? 'bg-gold text-white font-bold'
-                      : isToday(viewYear, viewMonth, d)
-                        ? 'bg-mist text-ink font-semibold'
-                        : 'text-ink hover:bg-mist'
+                  key={m.order}
+                  onClick={() => setPendingMonth(m.order)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                    (pendingMonth ?? viewMonth) === m.order ? 'bg-gold text-white font-semibold' : 'text-ink hover:bg-mist'
                   }`}
                 >
-                  {d}
+                  {m.label}
                 </button>
-              ) : <div key={i} />
-            )}
-          </div>
+              ))}
+              {pendingMonth !== null && (
+                <button
+                  onClick={() => { setViewMonth(pendingMonth); setPendingMonth(null); setPicker('days'); }}
+                  className="w-full bg-ink text-white text-sm font-medium py-2 rounded-lg hover:bg-black/80 mt-2"
+                >
+                  Done
+                </button>
+              )}
+            </div>
+          )}
+
+          {picker === 'years' && (
+            <div ref={pickerRef} className="max-h-64 overflow-y-auto space-y-1">
+              <button
+                onClick={() => { setViewYear(todayEth.year); setViewMonth(todayEth.month); setPendingYear(null); setPicker('days'); }}
+                className="text-xs text-gold hover:underline mb-2 block w-full text-center"
+              >
+                ዛሬ {todayEth.day} {ETHIOPIAN_MONTHS.find((m) => m.order === todayEth.month)?.label} {todayEth.year}
+              </button>
+              {years.map((y) => (
+                <button
+                  key={y}
+                  onClick={() => setPendingYear(y)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                    (pendingYear ?? viewYear) === y ? 'bg-gold text-white font-semibold' : 'text-ink hover:bg-mist'
+                  }`}
+                >
+                  {y}
+                </button>
+              ))}
+              {pendingYear !== null && (
+                <button
+                  onClick={() => { if (pendingYear !== null) setViewYear(pendingYear); setPendingYear(null); setPicker('days'); }}
+                  className="w-full bg-ink text-white text-sm font-medium py-2 rounded-lg hover:bg-black/80 mt-2"
+                >
+                  Done
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

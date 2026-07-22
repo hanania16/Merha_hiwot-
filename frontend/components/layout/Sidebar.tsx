@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Wallet, TrendingDown, FileBarChart, PieChart, Receipt,
-  LogOut, Users, CalendarCheck, CalendarDays, UserX, ShieldCheck,
+  LogOut, Users, CalendarCheck, CalendarDays, UserX, ShieldCheck, X,
 } from 'lucide-react';
 import { logout, getCurrentUser } from '@/lib/auth';
 import { useLang } from '@/lib/i18n';
@@ -30,7 +30,7 @@ const ATTENDANCE_NAV = [
   { href: '/dashboard/attendance/reports', key: 'reports', icon: FileBarChart },
 ];
 
-export function Sidebar() {
+export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const pathname = usePathname();
   const user = getCurrentUser();
   const { t } = useLang();
@@ -63,16 +63,19 @@ export function Sidebar() {
     );
   }
 
-  return (
-    <aside className="w-64 shrink-0 bg-ink text-white min-h-screen flex flex-col">
-      <div className="px-6 py-6 border-b border-white/10 flex items-center gap-3">
-        <div className="w-11 h-11 rounded-full overflow-hidden shrink-0 bg-white/5">
+  const sidebarContent = (
+    <>
+      <div className="px-4 sm:px-6 py-4 sm:py-6 border-b border-white/10 flex items-center gap-3">
+        <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full overflow-hidden shrink-0 bg-white/5">
           <Image src="/logo.jpg" alt="Church logo" width={44} height={44} className="object-cover w-full h-full" />
         </div>
-        <div>
-          <p className="text-base font-semibold text-gold leading-tight">መርሃ ህይወት</p>
-          <p className="text-sm text-white/70 leading-tight">ሰ/ቤት</p>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm sm:text-base font-semibold text-gold leading-tight truncate">መርሃ ህይወት</p>
+          <p className="text-xs sm:text-sm text-white/70 leading-tight truncate">ሰ/ቤት</p>
         </div>
+        <button onClick={onClose} className="md:hidden p-1 rounded-lg hover:bg-white/10 text-white/70">
+          <X size={20} />
+        </button>
       </div>
 
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
@@ -83,6 +86,7 @@ export function Sidebar() {
             <p className="px-3 mb-1 text-[10px] font-semibold tracking-wider text-white/40 uppercase">{t('admin')}</p>
             <Link
               href="/dashboard/admin"
+              onClick={onClose}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${
                 pathname === '/dashboard/admin' ? 'bg-gold text-ink' : 'text-white/80 hover:bg-white/10'
               }`}
@@ -96,11 +100,29 @@ export function Sidebar() {
 
       <div className="px-4 py-4 border-t border-white/10">
         <p className="text-sm text-white/90 truncate">{user?.fullName}</p>
-        <p className="text-xs text-white/40 mb-3">{user?.role.replace('_', ' ')}</p>
+        <p className="text-xs text-white/40 mb-3 truncate">{user?.role.replace('_', ' ')}</p>
         <button onClick={logout} className="flex items-center gap-2 text-sm text-white/70 hover:text-white">
           <LogOut size={16} /> {t('signOut')}
         </button>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile drawer */}
+      <aside
+        className={`md:hidden fixed inset-y-0 left-0 z-50 w-64 sm:w-72 bg-ink text-white flex flex-col transform transition-transform duration-300 ease-in-out ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* Desktop sidebar */}
+      <aside className="hidden md:flex w-64 shrink-0 bg-ink text-white min-h-screen flex-col">
+        {sidebarContent}
+      </aside>
+    </>
   );
 }

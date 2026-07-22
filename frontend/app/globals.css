@@ -45,8 +45,8 @@ body {
   @apply w-full text-sm border-collapse;
 }
 .table-base th {
-  @apply text-left text-xs uppercase tracking-wide text-slate font-medium py-3 px-4 border-b border-gray-100;
+  @apply text-left text-xs uppercase tracking-wide text-slate font-medium py-3 px-2 sm:px-4 border-b border-gray-100;
 }
 .table-base td {
-  @apply py-3 px-4 border-b border-gray-50;
+  @apply py-3 px-2 sm:px-4 border-b border-gray-50;
 }

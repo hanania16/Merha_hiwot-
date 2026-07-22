@@ -191,70 +191,70 @@ export function EthiopianDatePicker({ value, onChange }: EthiopianDatePickerProp
           )}
 
           {picker === 'months' && (
-            <div ref={pickerRef} className="max-h-64 overflow-y-auto">
-              <div className="sticky top-0 bg-white z-10 pb-1">
+            <div>
+              <div ref={pickerRef} className="max-h-52 overflow-y-auto">
                 <button
                   onClick={() => { setViewYear(todayEth.year); setViewMonth(todayEth.month); setPendingMonth(null); setPicker('days'); }}
-                  className="text-xs text-gold hover:underline block w-full text-center py-1"
+                  className="text-xs text-gold hover:underline block w-full text-center py-1 mb-1"
                 >
                   ዛሬ {todayEth.day} {ETHIOPIAN_MONTHS.find((m) => m.order === todayEth.month)?.label} {todayEth.year}
                 </button>
-                {pendingMonth !== null && (
-                  <button
-                    onClick={() => { setViewMonth(pendingMonth); setPendingMonth(null); setPicker('days'); }}
-                    className="w-full bg-ink text-white text-sm font-medium py-2 rounded-lg hover:bg-black/80 mb-1"
-                  >
-                    Done
-                  </button>
-                )}
+                <div className="space-y-1">
+                  {ETHIOPIAN_MONTHS.map((m) => (
+                    <button
+                      key={m.order}
+                      onClick={() => setPendingMonth(m.order)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                        (pendingMonth ?? viewMonth) === m.order ? 'bg-gold text-white font-semibold' : 'text-ink hover:bg-mist'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="space-y-1">
-                {ETHIOPIAN_MONTHS.map((m) => (
-                  <button
-                    key={m.order}
-                    onClick={() => setPendingMonth(m.order)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                      (pendingMonth ?? viewMonth) === m.order ? 'bg-gold text-white font-semibold' : 'text-ink hover:bg-mist'
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
+              {pendingMonth !== null && (
+                <button
+                  onClick={() => { setViewMonth(pendingMonth); setPendingMonth(null); setPicker('days'); }}
+                  className="w-full bg-ink text-white text-sm font-medium py-2 rounded-lg hover:bg-black/80 mt-2"
+                >
+                  Done
+                </button>
+              )}
             </div>
           )}
 
           {picker === 'years' && (
-            <div ref={pickerRef} className="max-h-64 overflow-y-auto">
-              <div className="sticky top-0 bg-white z-10 pb-1">
+            <div>
+              <div ref={pickerRef} className="max-h-52 overflow-y-auto">
                 <button
                   onClick={() => { setViewYear(todayEth.year); setViewMonth(todayEth.month); setPendingYear(null); setPicker('days'); }}
-                  className="text-xs text-gold hover:underline block w-full text-center py-1"
+                  className="text-xs text-gold hover:underline block w-full text-center py-1 mb-1"
                 >
                   ዛሬ {todayEth.day} {ETHIOPIAN_MONTHS.find((m) => m.order === todayEth.month)?.label} {todayEth.year}
                 </button>
-                {pendingYear !== null && (
-                  <button
-                    onClick={() => { if (pendingYear !== null) setViewYear(pendingYear); setPendingYear(null); setPicker('days'); }}
-                    className="w-full bg-ink text-white text-sm font-medium py-2 rounded-lg hover:bg-black/80 mb-1"
-                  >
-                    Done
-                  </button>
-                )}
+                <div className="space-y-1">
+                  {years.map((y) => (
+                    <button
+                      key={y}
+                      onClick={() => setPendingYear(y)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                        (pendingYear ?? viewYear) === y ? 'bg-gold text-white font-semibold' : 'text-ink hover:bg-mist'
+                      }`}
+                    >
+                      {y}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="space-y-1">
-                {years.map((y) => (
-                  <button
-                    key={y}
-                    onClick={() => setPendingYear(y)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                      (pendingYear ?? viewYear) === y ? 'bg-gold text-white font-semibold' : 'text-ink hover:bg-mist'
-                    }`}
-                  >
-                    {y}
-                  </button>
-                ))}
-              </div>
+              {pendingYear !== null && (
+                <button
+                  onClick={() => { if (pendingYear !== null) setViewYear(pendingYear); setPendingYear(null); setPicker('days'); }}
+                  className="w-full bg-ink text-white text-sm font-medium py-2 rounded-lg hover:bg-black/80 mt-2"
+                >
+                  Done
+                </button>
+              )}
             </div>
           )}
         </div>

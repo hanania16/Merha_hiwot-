@@ -130,7 +130,7 @@ CREATE TABLE "events" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "date" TIMESTAMP(3) NOT NULL,
-    "eventType" "EventType" NOT NULL DEFAULT 'SPECIAL_PROGRAM',
+    "eventType" "EventType" NOT NULL DEFAULT 'SUNDAY_SCHOOL',
     "description" TEXT,
     "participatingClassIds" TEXT[],
     "status" "EventStatus" NOT NULL DEFAULT 'UPCOMING',

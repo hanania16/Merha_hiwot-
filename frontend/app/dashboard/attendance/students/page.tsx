@@ -170,7 +170,7 @@ function RegisterModal({ classes, onClose, onSaved }: { classes: ClassGroup[]; o
             {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
-        <div><label className="label">Enrollment Date</label><input type="date" className="input" value={enrollmentDate} onChange={(e) => setEnrollmentDate(e.target.value)} /></div>
+        <div><label className="label">Enrollment Date</label><EthiopianDatePicker value={enrollmentDate} onChange={(d) => setEnrollmentDate(d)} /></div>
         <div><label className="label">Student Phone (optional)</label><input className="input" value={studentPhone} onChange={(e) => setStudentPhone(e.target.value)} /></div>
         <div><label className="label">Parent/Guardian Name</label><input className="input" value={parentName} onChange={(e) => setParentName(e.target.value)} /></div>
         <div><label className="label">Parent Phone</label><input className="input" value={parentPhone} onChange={(e) => setParentPhone(e.target.value)} /></div>

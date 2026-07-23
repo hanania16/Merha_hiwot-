@@ -11,6 +11,7 @@ interface Profile {
   fullName: string;
   gender: string;
   age: number;
+  registrationDate: string;
   parentName: string;
   parentPhone: string;
   class: { name: string };
@@ -44,6 +45,9 @@ export default function StudentProfilePage() {
           <p className="text-xs font-medium text-slate uppercase mb-2">Personal Information</p>
           <p className="text-sm text-ink">Parent/Guardian: {profile.parentName}</p>
           <p className="text-sm text-ink">Parent Phone: {profile.parentPhone}</p>
+          {profile.registrationDate && (
+            <p className="text-sm text-ink mt-2">Enrolled: {new Date(profile.registrationDate).toLocaleDateString()}</p>
+          )}
           <p className="text-sm mt-1">
             Status: <Badge variant={profile.status === 'ACTIVE' ? 'paid' : 'neutral'}>{profile.status}</Badge>
             {' '}

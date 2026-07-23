@@ -132,6 +132,7 @@ function RegisterModal({ classes, onClose, onSaved }: { classes: ClassGroup[]; o
   const [studentPhone, setStudentPhone] = useState('');
   const [parentName, setParentName] = useState('');
   const [parentPhone, setParentPhone] = useState('');
+  const [enrollmentDate, setEnrollmentDate] = useState(new Date().toISOString().split('T')[0]);
   const [classId, setClassId] = useState(classes[0]?.id ?? '');
   const [isWorkingMember, setIsWorkingMember] = useState(false);
   const [monthlySalary, setMonthlySalary] = useState('');
@@ -142,7 +143,7 @@ function RegisterModal({ classes, onClose, onSaved }: { classes: ClassGroup[]; o
     try {
       await api.post('/students', {
         fullName, fullNameAmharic: fullNameAmharic || undefined, gender, dateOfBirth, studentPhone,
-        parentName, parentPhone, classId: classId || classes[0]?.id,
+        parentName, parentPhone, classId: classId || classes[0]?.id, registrationDate: enrollmentDate,
         isWorkingMember, monthlySalary: isWorkingMember && monthlySalary ? Number(monthlySalary) : undefined,
       });
       onSaved();
@@ -169,6 +170,7 @@ function RegisterModal({ classes, onClose, onSaved }: { classes: ClassGroup[]; o
             {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
+        <div><label className="label">Enrollment Date</label><input type="date" className="input" value={enrollmentDate} onChange={(e) => setEnrollmentDate(e.target.value)} /></div>
         <div><label className="label">Student Phone (optional)</label><input className="input" value={studentPhone} onChange={(e) => setStudentPhone(e.target.value)} /></div>
         <div><label className="label">Parent/Guardian Name</label><input className="input" value={parentName} onChange={(e) => setParentName(e.target.value)} /></div>
         <div><label className="label">Parent Phone</label><input className="input" value={parentPhone} onChange={(e) => setParentPhone(e.target.value)} /></div>

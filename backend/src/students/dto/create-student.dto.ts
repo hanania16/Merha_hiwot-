@@ -40,4 +40,8 @@ export class CreateStudentDto {
   @IsOptional()
   @IsNumber()
   monthlySalary?: number;
+
+  @IsOptional()
+  @IsDateString()
+  registrationDate?: string;
 }

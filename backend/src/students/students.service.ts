@@ -25,8 +25,15 @@ export class StudentsService {
 
   async create(dto: CreateStudentDto, userId: string) {
     const studentCode = await this.nextStudentCode();
+    const { registrationDate, ...rest } = dto;
     const student = await this.prisma.student.create({
-      data: { ...dto, studentCode, dateOfBirth: new Date(dto.dateOfBirth), createdById: userId },
+      data: {
+        ...rest,
+        studentCode,
+        dateOfBirth: new Date(dto.dateOfBirth),
+        registrationDate: registrationDate ? new Date(registrationDate) : undefined,
+        createdById: userId,
+      },
       include: { class: true },
     });
     await this.audit.log({

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { api, downloadUrl } from '@/lib/api';
-import { formatETB, monthLabel } from '@/lib/ethiopian-calendar';
+import { formatETB, monthLabel, formatEthiopianDateFromGregorian } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { Image } from 'lucide-react';
 
@@ -130,7 +130,7 @@ export default function ReceiptsPage() {
                 {p.note && (
                   <div className="p-3">
                     <p className="text-sm text-ink">{p.note}</p>
-                    <p className="text-xs text-slate mt-1">{new Date(p.createdAt).toLocaleDateString()}</p>
+                    <p className="text-xs text-slate mt-1">{formatEthiopianDateFromGregorian(new Date(p.createdAt))}</p>
                   </div>
                 )}
               </div>
@@ -154,7 +154,7 @@ export default function ReceiptsPage() {
                 <td className="font-medium text-ink">{r.student.fullName}</td>
                 <td>{r.monthsPaid.map(monthLabel).join(', ')}</td>
                 <td>{formatETB(Number(r.amount))}</td>
-                <td>{new Date(r.paymentDate).toLocaleDateString()}</td>
+                <td>{formatEthiopianDateFromGregorian(new Date(r.paymentDate))}</td>
                 <td>{r.issuedBy.fullName}</td>
                 <td>
                   <a className="text-xs text-gold font-medium hover:underline" href={downloadUrl(`/finance/receipts/${r.id}/print`)} target="_blank" rel="noreferrer">Print</a>

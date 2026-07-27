@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { ETHIOPIAN_MONTHS, currentEthiopianYear, formatETB } from '@/lib/ethiopian-calendar';
+import { ETHIOPIAN_MONTHS, currentEthiopianYear, formatETB, formatEthiopianDateFromGregorian } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
@@ -102,7 +102,7 @@ export default function StudentFeesPage() {
                   {formatETB(r.outstandingBalance)}
                   {r.currentMonthPenalty > 0 && <span className="text-[10px] text-status-warning block">+{formatETB(r.currentMonthPenalty)} late fee</span>}
                 </td>
-                <td>{r.lastPaymentDate ? new Date(r.lastPaymentDate).toLocaleDateString() : '—'}</td>
+                <td>{r.lastPaymentDate ? formatEthiopianDateFromGregorian(new Date(r.lastPaymentDate)) : '—'}</td>
                 <td>
                   <button className="text-xs text-gold font-medium hover:underline" onClick={() => setModalStudent(r)}>
                     Record Payment

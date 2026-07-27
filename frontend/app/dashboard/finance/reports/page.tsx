@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { api, downloadUrl } from '@/lib/api';
-import { formatETB } from '@/lib/ethiopian-calendar';
+import { formatETB, ethiopianTodayISO } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
 
@@ -18,11 +18,10 @@ interface FinancialReport {
 }
 
 function firstOfMonth() {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  return ethiopianTodayISO();
 }
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return ethiopianTodayISO();
 }
 
 export default function ReportsPage() {

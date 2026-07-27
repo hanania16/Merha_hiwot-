@@ -35,7 +35,7 @@ export function toEthiopian(gregorian: Date): { year: number; month: number; day
   const r = (jdn - JD_EPOCH_OFFSET_AMETE_MIHRET) % 1461;
   const n = (r % 365) + 365 * Math.floor(r / 1460);
   const year =
-    4 * Math.floor((jdn - JD_EPOCH_OFFSET_AMETE_MIHRET) / 1461) + Math.floor(r / 365) - Math.floor(r / 1460);
+    4 * Math.floor((jdn - JD_EPOCH_OFFSET_AMETE_MIHRET) / 1461) + Math.floor(r / 365) - Math.floor(r / 1460) + 1;
   const month = Math.floor(n / 30) + 1;
   const day = (n % 30) + 1;
   return { year, month, day };
@@ -87,6 +87,19 @@ export function ethiopianMonthDays(year: number, month: number): number {
   if (month >= 1 && month <= 12) return 30;
   if (month === 13) return isEthiopianLeapYear(year) ? 6 : 5;
   return 0;
+}
+
+/** Gregorian ISO string (YYYY-MM-DD) for today in the Ethiopian calendar. */
+export function ethiopianTodayISO(): string {
+  const { year, month, day } = toEthiopian(new Date());
+  return gregToLocalStr(toGregorian(year, month, day));
+}
+
+function gregToLocalStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
 }
 
 export function formatETB(amount: number) {

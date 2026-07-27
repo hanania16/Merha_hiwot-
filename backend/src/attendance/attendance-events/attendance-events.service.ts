@@ -8,19 +8,20 @@ export class AttendanceEventsService {
 
   /** Attendance works on ANY calendar day — not restricted to Sundays. */
   async findOrCreate(dto: CreateEventDto) {
+    const title = dto.title ?? '';
     return this.prisma.attendanceEvent.upsert({
       where: {
         date_eventType_title: {
           date: new Date(dto.date),
           eventType: dto.eventType ?? 'SUNDAY_SCHOOL',
-          title: dto.title ?? '',
+          title,
         },
       },
       update: {},
       create: {
         date: new Date(dto.date),
         eventType: dto.eventType ?? 'SUNDAY_SCHOOL',
-        title: dto.title,
+        title,
       },
     });
   }

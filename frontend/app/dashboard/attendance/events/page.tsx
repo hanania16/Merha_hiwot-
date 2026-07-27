@@ -6,6 +6,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
+import { formatEthiopianDateFromGregorian, ethiopianTodayISO } from '@/lib/ethiopian-calendar';
 
 interface ClassGroup { id: string; name: string; }
 interface EventRow {
@@ -57,7 +58,7 @@ export default function EventsPage() {
                 {e.status}
               </Badge>
             </div>
-            <p className="text-xs text-slate mb-1">{new Date(e.date).toLocaleDateString()} · {e.eventType.replace(/_/g, ' ')}</p>
+            <p className="text-xs text-slate mb-1">{formatEthiopianDateFromGregorian(new Date(e.date))} · {e.eventType.replace(/_/g, ' ')}</p>
             {e.description && <p className="text-sm text-ink mb-3">{e.description}</p>}
             <div className="flex gap-6 pt-3 border-t border-gray-100 text-sm">
               <div><p className="text-slate text-xs">Students</p><p className="font-medium text-ink">{e.studentCount}</p></div>
@@ -77,7 +78,7 @@ export default function EventsPage() {
 
 function CreateEventModal({ classes, onClose, onSaved }: { classes: ClassGroup[]; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(ethiopianTodayISO());
   const [eventType, setEventType] = useState('SUNDAY_SCHOOL');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState('UPCOMING');

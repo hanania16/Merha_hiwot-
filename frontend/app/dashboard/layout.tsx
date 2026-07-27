@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { LanguageProvider } from '@/lib/i18n';
+import { HeaderProvider } from '@/lib/header-context';
 import { getCurrentUser } from '@/lib/auth';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -25,6 +26,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <LanguageProvider>
+      <HeaderProvider>
       <div className="flex min-h-screen">
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         {/* Mobile backdrop */}
@@ -39,6 +41,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {children}
         </main>
       </div>
+      </HeaderProvider>
     </LanguageProvider>
   );
 }

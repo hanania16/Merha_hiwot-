@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { formatETB } from '@/lib/ethiopian-calendar';
+import { formatETB, formatEthiopianDateFromGregorian } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { StatCard } from '@/components/ui/StatCard';
 
@@ -100,7 +100,7 @@ export default function FinanceDashboardPage() {
                 />
                 <div>
                   <p className="text-sm text-ink">{a.description}</p>
-                  <p className="text-xs text-slate">{new Date(a.date).toLocaleDateString()}</p>
+                  <p className="text-xs text-slate">{formatEthiopianDateFromGregorian(new Date(a.date))}</p>
                 </div>
               </div>
               <p className={`text-sm font-medium ${a.type === 'EXPENSE' ? 'text-status-absent' : 'text-status-present'}`}>

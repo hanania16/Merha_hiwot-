@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { useLang } from '@/lib/i18n';
 import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
+import { ethiopianTodayISO } from '@/lib/ethiopian-calendar';
 
 interface ClassGroup { id: string; name: string; }
 interface StudentRow {
@@ -132,7 +133,7 @@ function RegisterModal({ classes, onClose, onSaved }: { classes: ClassGroup[]; o
   const [studentPhone, setStudentPhone] = useState('');
   const [parentName, setParentName] = useState('');
   const [parentPhone, setParentPhone] = useState('');
-  const [enrollmentDate, setEnrollmentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [enrollmentDate, setEnrollmentDate] = useState(ethiopianTodayISO());
   const [classId, setClassId] = useState(classes[0]?.id ?? '');
   const [isWorkingMember, setIsWorkingMember] = useState(false);
   const [monthlySalary, setMonthlySalary] = useState('');

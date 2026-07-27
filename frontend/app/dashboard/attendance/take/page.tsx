@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { Topbar } from '@/components/layout/Topbar';
 import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
+import { ethiopianTodayISO } from '@/lib/ethiopian-calendar';
 
 interface ClassGroup { id: string; name: string; }
 interface RosterEntry {
@@ -31,7 +32,7 @@ const STATUS_STYLES: Record<string, string> = {
 export default function TakeAttendancePage() {
   const [classes, setClasses] = useState<ClassGroup[]>([]);
   const [classId, setClassId] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(ethiopianTodayISO());
   const [eventType, setEventType] = useState('SUNDAY_SCHOOL');
   const [title, setTitle] = useState('');
   const [roster, setRoster] = useState<RosterEntry[]>([]);
@@ -69,7 +70,7 @@ export default function TakeAttendancePage() {
       const result = await api.post<{ autoInactivated: { studentId: string; fullName: string }[] }>('/attendance/records/bulk', {
         date,
         eventType,
-        title: title || undefined,
+        title: title || '',
         entries: roster.map((r) => ({ studentId: r.studentId, status: statuses[r.studentId] ?? 'PRESENT' })),
       });
       let msg = `Saved attendance for ${roster.length} students.`;

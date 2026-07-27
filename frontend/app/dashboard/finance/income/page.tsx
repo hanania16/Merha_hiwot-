@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { formatETB } from '@/lib/ethiopian-calendar';
+import { formatETB, formatEthiopianDateFromGregorian, ethiopianTodayISO } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { Modal } from '@/components/ui/Modal';
 import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
@@ -48,7 +48,7 @@ export default function IncomePage() {
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
-                <td>{new Date(r.date).toLocaleDateString()}</td>
+                <td>{formatEthiopianDateFromGregorian(new Date(r.date))}</td>
                 <td>{r.category.replace(/_/g, ' ')}</td>
                 <td>{r.description ?? '—'}</td>
                 <td>{r.recordedBy?.fullName}</td>
@@ -68,7 +68,7 @@ export default function IncomePage() {
 }
 
 function IncomeFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(ethiopianTodayISO());
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [description, setDescription] = useState('');

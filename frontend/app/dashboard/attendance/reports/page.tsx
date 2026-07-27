@@ -5,11 +5,12 @@ import { api, downloadUrl } from '@/lib/api';
 import { Topbar } from '@/components/layout/Topbar';
 import { Badge } from '@/components/ui/Badge';
 import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
+import { formatEthiopianDateFromGregorian, ethiopianTodayISO } from '@/lib/ethiopian-calendar';
 
 interface ClassGroup { id: string; name: string; }
 
-function today() { return new Date().toISOString().slice(0, 10); }
-function firstOfMonth() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10); }
+function today() { return ethiopianTodayISO(); }
+function firstOfMonth() { return ethiopianTodayISO(); }
 
 export default function AttendanceReportsPage() {
   const [tab, setTab] = useState<'daily' | 'class' | 'registration'>('daily');
@@ -121,7 +122,7 @@ export default function AttendanceReportsPage() {
                   <tr key={i}>
                     <td className="font-medium text-ink">{r.fullName}</td>
                     <td>{r.className}</td><td>{r.gender}</td>
-                    <td>{new Date(r.registrationDate).toLocaleDateString()}</td>
+                    <td>{formatEthiopianDateFromGregorian(new Date(r.registrationDate))}</td>
                   </tr>
                 ))}
                 {regData.length === 0 && <tr><td colSpan={4} className="text-center text-sm text-slate py-8">Generate a report to see results.</td></tr>}

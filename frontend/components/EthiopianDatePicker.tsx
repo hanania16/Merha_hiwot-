@@ -82,7 +82,11 @@ export function EthiopianDatePicker({ value, onChange }: EthiopianDatePickerProp
 
   const notify = useCallback(
     (y: number, m: number, d: number) => {
-      onChange(toGregorian(y, m, d).toISOString().slice(0, 10));
+      const g = toGregorian(y, m, d);
+      const yStr = g.getFullYear();
+      const mStr = String(g.getMonth() + 1).padStart(2, '0');
+      const dStr = String(g.getDate()).padStart(2, '0');
+      onChange(`${yStr}-${mStr}-${dStr}`);
     },
     [onChange],
   );

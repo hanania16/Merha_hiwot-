@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { formatEthiopianDateFromGregorian } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 
 interface InactiveStudent {
@@ -45,8 +46,8 @@ export default function InactiveStudentsPage() {
                 <td className="font-medium text-ink">{r.fullName}</td>
                 <td>{r.className}</td>
                 <td className="text-status-absent font-medium">{r.consecutiveAbsentDays ?? '—'}</td>
-                <td>{r.lastAttendanceDate ? new Date(r.lastAttendanceDate).toLocaleDateString() : '—'}</td>
-                <td>{r.dateMarkedInactive ? new Date(r.dateMarkedInactive).toLocaleDateString() : '—'}</td>
+                <td>{r.lastAttendanceDate ? formatEthiopianDateFromGregorian(new Date(r.lastAttendanceDate)) : '—'}</td>
+                <td>{r.dateMarkedInactive ? formatEthiopianDateFromGregorian(new Date(r.dateMarkedInactive)) : '—'}</td>
                 <td className="text-xs text-slate">{r.reason}</td>
               </tr>
             ))}

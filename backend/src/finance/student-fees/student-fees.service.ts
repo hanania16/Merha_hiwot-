@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { EthiopianMonth } from '@prisma/client';
+import { EthiopianMonth, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
-import { ETHIOPIAN_MONTHS, currentEthiopianYear } from '../../common/constants/ethiopian-calendar';
-import { baseFeeFor, latePenaltyFor, latePenaltyForMonth } from '../../common/constants/fee-rules';
+import { ETHIOPIAN_MONTHS, currentEthiopianYear, toEthiopian } from '../../common/constants/ethiopian-calendar';
+import { LATE_PENALTY_CAP, baseFeeFor, latePenaltyFor, latePenaltyForMonth } from '../../common/constants/fee-rules';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { QueryFeesDto } from './dto/query-fees.dto';
 
@@ -186,6 +186,54 @@ export class StudentFeesService {
       results.push(payment);
     }
     return results;
+  }
+
+  /** Auto-creates an unpaid fee record for every active student for the given Ethiopian month. */
+  async generateMonthlyFees(ethiopianYear: number, month: EthiopianMonth, userId: string) {
+    const students = await this.prisma.student.findMany({
+      where: { status: 'ACTIVE' },
+      include: { class: true },
+    });
+
+    const today = toEthiopian(new Date());
+    const records = students.map((student) => {
+      const isWorkingMember = student.isWorkingMember;
+      const base = baseFeeFor({
+        classLevel: student.class.level,
+        isWorkingMember,
+        monthlySalary: student.monthlySalary ? Number(student.monthlySalary) : null,
+      });
+      const penalty =
+        ethiopianYear < today.year || (ethiopianYear === today.year && monthOrder(month) < today.month)
+          ? LATE_PENALTY_CAP[student.class.level]
+          : 0;
+      return {
+        studentId: student.id,
+        ethiopianYear,
+        month,
+        status: 'UNPAID' as PaymentStatus,
+        baseAmount: base,
+        penaltyAmount: penalty,
+        amount: Math.round((base + penalty) * 100) / 100,
+        recordedById: userId,
+      };
+    });
+
+    const result = await this.prisma.monthlyPayment.createMany({
+      data: records,
+      skipDuplicates: true,
+    });
+
+    await this.audit.log({
+      userId,
+      action: 'MONTHLY_FEES_GENERATED',
+      entityType: 'MonthlyPayment',
+      entityId: `${ethiopianYear}-${month}`,
+      oldValue: { ethiopianYear, month },
+      newValue: { count: result.count },
+    });
+
+    return { generated: result.count, month, ethiopianYear };
   }
 
   /** Students who haven't paid the current Ethiopian month — used by both the Finance reminder and the Attendance "fee reminder" section. */

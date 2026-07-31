@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { EthiopianMonth } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { ETHIOPIAN_MONTHS, currentEthiopianYear } from '../../common/constants/ethiopian-calendar';
-import { baseFeeFor, latePenaltyAsOf } from '../../common/constants/fee-rules';
+import { baseFeeFor, latePenaltyFor, latePenaltyForMonth } from '../../common/constants/fee-rules';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { QueryFeesDto } from './dto/query-fees.dto';
+
+const monthOrder = (month: EthiopianMonth) =>
+  ETHIOPIAN_MONTHS.find((m) => m.value === month)?.order ?? 1;
 
 @Injectable()
 export class StudentFeesService {
@@ -49,7 +53,10 @@ export class StudentFeesService {
         isWorkingMember: s.isWorkingMember,
         monthlySalary: s.monthlySalary ? Number(s.monthlySalary) : null,
       });
-      const penalty = overallStatus !== 'PAID' ? latePenaltyAsOf() : 0;
+      const penalty = overallStatus !== 'PAID' ? latePenaltyFor(s.class.level) : 0;
+      const selectedMonth = query.month
+        ? s.monthlyPayments.find((p) => p.month === query.month) ?? null
+        : null;
 
       return {
         studentId: s.id,
@@ -57,6 +64,7 @@ export class StudentFeesService {
         fullName: s.fullName,
         fullNameAmharic: s.fullNameAmharic,
         className: s.class.name,
+        classLevel: s.class.level,
         parentName: s.parentName,
         parentPhone: s.parentPhone,
         isWorkingMember: s.isWorkingMember,
@@ -69,6 +77,7 @@ export class StudentFeesService {
         currentMonthPenalty: penalty,
         outstandingBalance: unpaidCount > 0 ? Math.round((unpaidCount * base + penalty) * 100) / 100 : 0,
         months: s.monthlyPayments,
+        selectedMonth,
       };
     });
 
@@ -100,7 +109,7 @@ export class StudentFeesService {
 
     const paidMonths = student.monthlyPayments.filter((p) => p.status === 'PAID');
     const unpaidMonthCount = ETHIOPIAN_MONTHS.length - paidMonths.length;
-    const currentMonthPenalty = unpaidMonthCount > 0 ? latePenaltyAsOf() : 0;
+    const currentMonthPenalty = unpaidMonthCount > 0 ? latePenaltyFor(student.class.level) : 0;
     const previousUnpaidMonths = Math.max(unpaidMonthCount - 1, 0);
     const previousUnpaidTotal = Math.round(previousUnpaidMonths * base * 100) / 100;
     const currentMonthBase = unpaidMonthCount > 0 ? base : 0;
@@ -129,10 +138,13 @@ export class StudentFeesService {
       monthlySalary: student.monthlySalary ? Number(student.monthlySalary) : null,
     });
     const amountPerMonth = dto.amountPerMonth ?? base;
-    const penalty = dto.includePenalty ? latePenaltyAsOf() : 0;
 
     const results = [];
     for (const month of dto.months) {
+      const penalty = dto.includePenalty
+        ? latePenaltyForMonth(student.class.level, dto.ethiopianYear, monthOrder(month))
+        : 0;
+      const total = Math.round((amountPerMonth + penalty) * 100) / 100;
       const existing = await this.prisma.monthlyPayment.findUnique({
         where: { studentId_ethiopianYear_month: { studentId: dto.studentId, ethiopianYear: dto.ethiopianYear, month } },
       });
@@ -143,7 +155,7 @@ export class StudentFeesService {
           status: 'PAID',
           baseAmount: amountPerMonth,
           penaltyAmount: penalty,
-          amount: amountPerMonth + penalty,
+          amount: total,
           notes: dto.notes,
           paidDate: new Date(),
           recordedById: userId,
@@ -155,7 +167,7 @@ export class StudentFeesService {
           status: 'PAID',
           baseAmount: amountPerMonth,
           penaltyAmount: penalty,
-          amount: amountPerMonth + penalty,
+          amount: total,
           notes: dto.notes,
           paidDate: new Date(),
           recordedById: userId,

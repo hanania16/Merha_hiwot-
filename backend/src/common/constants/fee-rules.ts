@@ -3,7 +3,7 @@ import { ethiopianDayOfMonth } from './ethiopian-calendar';
 
 /** Monthly fee by class group, in Birr. */
 export const CLASS_MONTHLY_FEE: Record<ClassLevel, number> = {
-  CLASS_1_3: 30,
+  CLASS_1_3: 20,
   CLASS_4_6: 30,
   CLASS_7_12: 50,
 };

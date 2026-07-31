@@ -34,6 +34,7 @@ interface Profile {
   absentCount: number;
   permissionCount: number;
   consecutiveAbsenceCount: number;
+  eligibility?: { eligible: boolean; monthsEnrolled: number; attendancePercentage: number; attendanceThresholdMet: boolean };
   feeStatus: { status: string; unpaidMonths: number; lastPaidMonth: string | null };
   attendanceHistory: { date: string; eventType: string; title: string | null; status: string }[];
 }
@@ -82,6 +83,26 @@ export default function StudentProfilePage() {
               </Badge>
             )}
           </p>
+          <div className="mt-3 pt-3 border-t border-border">
+            <p className="text-xs font-medium text-slate uppercase mb-1">Eligibility to Serve</p>
+            {profile.eligibility ? (
+              <>
+                <p className="text-sm text-ink">Enrolled: {profile.eligibility.monthsEnrolled} month(s)</p>
+                <p className="text-sm text-ink">Attendance (3mo): {profile.eligibility.attendancePercentage}%</p>
+                <p className="text-sm mt-1">
+                  {profile.eligibility.eligible
+                    ? <Badge variant="paid">Eligible</Badge>
+                    : <Badge variant="unpaid">Not Eligible</Badge>}
+                  {!profile.eligibility.attendanceThresholdMet && profile.eligibility.monthsEnrolled >= 3 &&
+                    <span className="ml-2 text-xs text-red-600">Needs ≥80% attendance</span>}
+                  {profile.eligibility.monthsEnrolled < 3 &&
+                    <span className="ml-2 text-xs text-slate">Needs ≥3 months enrolled</span>}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-slate">—</p>
+            )}
+          </div>
         </div>
         <div className="card p-5">
           <p className="text-xs font-medium text-slate uppercase mb-2">Fee Status (Read Only)</p>

@@ -23,6 +23,7 @@ interface StudentRow {
   status: string;
   isWorkingMember: boolean;
   class: ClassGroup;
+  eligibility?: { eligible: boolean; monthsEnrolled: number; attendancePercentage: number; attendanceThresholdMet: boolean };
 }
 
 export default function StudentsPage() {
@@ -33,6 +34,7 @@ export default function StudentsPage() {
   const [classId, setClassId] = useState('');
   const [gender, setGender] = useState('');
   const [status, setStatus] = useState('');
+  const [eligibleOnly, setEligibleOnly] = useState('');
   const [loading, setLoading] = useState(true);
   const [showRegister, setShowRegister] = useState(false);
 
@@ -43,6 +45,7 @@ export default function StudentsPage() {
     if (classId) params.set('classId', classId);
     if (gender) params.set('gender', gender);
     if (status) params.set('status', status);
+    if (eligibleOnly) params.set('eligibleToServe', 'true');
     const res = await api.get<{ data: StudentRow[] }>(`/students?${params.toString()}`);
     setRows(res.data);
     setLoading(false);
@@ -88,6 +91,13 @@ export default function StudentsPage() {
             <option value="INACTIVE">Inactive</option>
           </select>
         </div>
+        <div>
+          <label className="label">Eligible to Serve</label>
+          <select className="input" value={eligibleOnly} onChange={(e) => setEligibleOnly(e.target.value)}>
+            <option value="">Any</option>
+            <option value="true">Eligible</option>
+          </select>
+        </div>
         <button className="btn-outline" onClick={load}>Search</button>
       </div>
 
@@ -103,6 +113,7 @@ export default function StudentsPage() {
                 <td className="font-medium text-ink">
                   {lang === 'am' && s.fullNameAmharic ? s.fullNameAmharic : s.fullName}
                   {s.isWorkingMember && <span className="ml-2 text-[10px] text-gold border border-gold rounded-full px-1.5 py-0.5">Working Member</span>}
+                  {s.eligibility?.eligible && <span className="ml-1 text-[10px] text-green-700 bg-green-100 border border-green-300 rounded-full px-1.5 py-0.5">Eligible to Serve</span>}
                 </td>
                 <td>{s.age}</td>
                 <td>{s.class.name}</td>

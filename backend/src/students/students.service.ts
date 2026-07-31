@@ -14,6 +14,16 @@ function calculateAge(dob: Date): number {
   return age;
 }
 
+const ELIGIBLE_MIN_MONTHS = 3;
+const ELIGIBLE_MIN_ATTENDANCE_PCT = 80;
+
+export interface EligibilityResult {
+  eligible: boolean;
+  monthsEnrolled: number;
+  attendancePercentage: number;
+  attendanceThresholdMet: boolean;
+}
+
 @Injectable()
 export class StudentsService {
   constructor(private prisma: PrismaService, private audit: AuditService) {}
@@ -99,6 +109,7 @@ export class StudentsService {
 
     const consecutiveAbsences = this.countConsecutiveAbsences(attendance);
     const paidMonths = student.monthlyPayments.filter((p) => p.status === 'PAID').length;
+    const eligibility = await this.computeEligibility(student.id, student.registrationDate);
 
     return {
       ...student,
@@ -124,6 +135,44 @@ export class StudentsService {
             .filter((p) => p.status === 'PAID')
             .sort((a, b) => (b.paidDate?.getTime() ?? 0) - (a.paidDate?.getTime() ?? 0))[0]?.month ?? null,
       },
+      eligibility,
+    };
+  }
+
+  private async computeEligibility(studentId: string, registrationDate: Date): Promise<EligibilityResult> {
+    const now = new Date();
+    const monthsEnrolled = (now.getFullYear() - registrationDate.getFullYear()) * 12
+      + (now.getMonth() - registrationDate.getMonth());
+
+    if (monthsEnrolled < ELIGIBLE_MIN_MONTHS) {
+      return { eligible: false, monthsEnrolled, attendancePercentage: 0, attendanceThresholdMet: false };
+    }
+
+    const threeMonthsAgo = new Date(now);
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - ELIGIBLE_MIN_MONTHS);
+
+    const records = await this.prisma.attendance.findMany({
+      where: {
+        studentId,
+        event: { date: { gte: threeMonthsAgo } },
+      },
+      include: { event: true },
+    });
+
+    const total = records.length;
+    if (total === 0) {
+      return { eligible: false, monthsEnrolled, attendancePercentage: 0, attendanceThresholdMet: false };
+    }
+
+    const attended = records.filter((r) => r.status !== 'ABSENT').length;
+    const attendancePercentage = Math.round((attended / total) * 100);
+    const attendanceThresholdMet = attendancePercentage >= ELIGIBLE_MIN_ATTENDANCE_PCT;
+
+    return {
+      eligible: attendanceThresholdMet,
+      monthsEnrolled,
+      attendancePercentage,
+      attendanceThresholdMet,
     };
   }
 
@@ -185,6 +234,16 @@ export class StudentsService {
         }),
       );
       results = withFee.filter((s) => s.computedFeeStatus === query.feeStatus);
+    }
+
+    if (query.eligibleToServe === 'true') {
+      const withEligibility = await Promise.all(
+        results.map(async (s) => {
+          const e = await this.computeEligibility(s.id, s.registrationDate);
+          return { ...s, eligibility: e };
+        }),
+      );
+      results = withEligibility.filter((s) => s.eligibility!.eligible);
     }
 
     return { data: results, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };

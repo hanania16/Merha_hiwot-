@@ -19,7 +19,7 @@ export class RecordPaymentDto {
   @Min(0)
   amountPerMonth?: number;
 
-  /** Whether to add the current late penalty (10 Birr / 3 days after the 7-day grace period) to this payment. */
+  /** Whether to add the late penalty (after the 10-day grace) to this payment. */
   @IsOptional()
   @IsBoolean()
   includePenalty?: boolean;

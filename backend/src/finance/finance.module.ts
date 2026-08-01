@@ -6,6 +6,8 @@ import { ExpenseModule } from './expense/expense.module';
 import { FinanceReportsModule } from './reports/reports.module';
 import { FinanceAnalyticsModule } from './analytics/analytics.module';
 import { ReceiptsModule } from './receipts/receipts.module';
+import { AccountsModule } from './accounts/accounts.module';
+import { ReconciliationsModule } from './reconciliations/reconciliations.module';
 import { NotificationsController } from './notifications/notifications.controller';
 import { NotificationsService } from './notifications/notifications.service';
 
@@ -18,6 +20,8 @@ import { NotificationsService } from './notifications/notifications.service';
     FinanceReportsModule,
     FinanceAnalyticsModule,
     ReceiptsModule,
+    AccountsModule,
+    ReconciliationsModule,
   ],
   controllers: [NotificationsController],
   providers: [NotificationsService],

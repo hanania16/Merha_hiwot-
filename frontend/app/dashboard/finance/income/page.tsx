@@ -8,6 +8,11 @@ import { Modal } from '@/components/ui/Modal';
 import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
 
 const CATEGORIES = ['STUDENT_FEES', 'DONATIONS', 'DEVELOPMENT_DEPART', 'OTHERS'];
+const PAYMENT_METHODS = ['CASH', 'BANK_TRANSFER', 'MOBILE_MONEY', 'CHEQUE'];
+const INCOME_SOURCES = ['STUDENT_FEE', 'DONATION', 'CHURCH_CONTRIBUTION', 'FUNDRAISING', 'SPECIAL_OFFERING', 'OTHER'];
+
+interface Account { id: string; name: string; type: string; }
+interface PaymentOption { id: string; label: string; }
 
 interface IncomeRow {
   id: string;
@@ -73,14 +78,40 @@ function IncomeFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
+  const [sourceType, setSourceType] = useState('DONATION');
+  const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [accountId, setAccountId] = useState('');
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
+  const [monthlyPaymentId, setMonthlyPaymentId] = useState('');
+
+  useEffect(() => {
+    api.get<Account[]>('/finance/accounts')
+      .then((accs) => { setAccounts(accs); if (accs.length) setAccountId(accs[0].id); })
+      .catch(() => {});
+    api.get<{ fullName: string; months: { id: string; month: string; ethiopianYear: number }[] }[]>('/finance/student-fees')
+      .then((rows) => {
+        const opts: PaymentOption[] = [];
+        for (const s of rows) for (const m of s.months ?? []) {
+          opts.push({ id: m.id, label: `${s.fullName} — ${m.month.replace(/_/g, ' ')} ${m.ethiopianYear}` });
+        }
+        setPaymentOptions(opts);
+      })
+      .catch(() => {});
+  }, []);
 
   const othersValid = category !== 'OTHERS' || description.trim().split(/\s+/).length >= 3;
-  const canSave = !saving && !!amount && othersValid;
+  const canSave = !saving && !!amount && othersValid && !!paymentMethod && !!accountId
+    && (sourceType !== 'STUDENT_FEE' || !!monthlyPaymentId);
 
   async function submit() {
     setSaving(true);
     try {
-      await api.post('/finance/income', { date, amount: Number(amount), category, description });
+      await api.post('/finance/income', {
+        date, amount: Number(amount), category, description,
+        sourceType, paymentMethod, accountId,
+        ...(sourceType === 'STUDENT_FEE' ? { monthlyPaymentId } : {}),
+      });
       onSaved();
     } finally {
       setSaving(false);
@@ -98,6 +129,37 @@ function IncomeFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
           <label className="label">Category</label>
           <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
             {CATEGORIES.map((c) => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Source Type</label>
+          <select className="input" value={sourceType} onChange={(e) => { setSourceType(e.target.value); setMonthlyPaymentId(''); }}>
+            {INCOME_SOURCES.map((s) => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+          </select>
+        </div>
+        {sourceType === 'STUDENT_FEE' && (
+          <div>
+            <label className="label">Student Monthly Payment</label>
+            <select className="input" value={monthlyPaymentId} onChange={(e) => setMonthlyPaymentId(e.target.value)}>
+              <option value="">Select a payment…</option>
+              {paymentOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+            {paymentOptions.length === 0 && (
+              <p className="text-xs text-red-500">No student payments available yet.</p>
+            )}
+          </div>
+        )}
+        <div>
+          <label className="label">Payment Method</label>
+          <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+            {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m.replace(/_/g, ' ')}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Account</label>
+          <select className="input" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            {accounts.length === 0 && <option value="">No accounts available</option>}
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </div>
         <div>

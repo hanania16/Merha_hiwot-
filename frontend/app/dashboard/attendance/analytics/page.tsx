@@ -16,6 +16,7 @@ export default function AttendanceAnalyticsPage() {
   const [presentVsAbsent, setPresentVsAbsent] = useState<any[]>([]);
   const [registrationTrend, setRegistrationTrend] = useState<any[]>([]);
   const [mostAbsent, setMostAbsent] = useState<any[]>([]);
+  const [calledAbsent, setCalledAbsent] = useState<any[]>([]);
   const [buckets, setBuckets] = useState<any>(null);
 
   useEffect(() => {
@@ -29,7 +30,8 @@ export default function AttendanceAnalyticsPage() {
       ]),
     );
     api.get<any[]>('/attendance/analytics/registration-trend').then(setRegistrationTrend);
-    api.get<any[]>('/attendance/analytics/most-absent').then(setMostAbsent);
+    api.get<any[]>('/attendance/analytics/most-absent?minAbsences=2').then(setMostAbsent);
+    api.get<any[]>('/attendance/analytics/most-absent?minAbsences=3').then(setCalledAbsent);
     api.get<any>('/attendance/analytics/absence-buckets').then(setBuckets);
   }, []);
 
@@ -104,17 +106,48 @@ export default function AttendanceAnalyticsPage() {
         </div>
 
         <div className="card p-6">
-          <h2 className="text-sm font-semibold text-ink mb-4">Most Frequently Absent Students</h2>
+          <h2 className="text-sm font-semibold text-ink mb-1">Most Frequently Absent Students</h2>
+          <p className="text-xs text-slate mb-4">Absent 2 days or more</p>
           <div className="space-y-2">
-            {mostAbsent.map((m: any) => (
-              <div key={m.studentId} className="flex justify-between text-sm py-1.5 border-b border-gray-50 last:border-0">
-                <span className="text-ink">{m.fullName}</span>
-                <span className="text-status-absent font-medium">{m.absentCount} absences</span>
-              </div>
-            ))}
-            {mostAbsent.length === 0 && <p className="text-sm text-slate">No absences recorded yet.</p>}
+            {mostAbsent.map((m: any) => <AbsentStudentRow key={m.studentId} m={m} />)}
+            {mostAbsent.length === 0 && <p className="text-sm text-slate">No students with 2 or more absences.</p>}
           </div>
         </div>
+      </div>
+
+      <div className="card p-6 mt-6">
+        <h2 className="text-sm font-semibold text-ink mb-1">Called and Didn&apos;t Come Students</h2>
+        <p className="text-xs text-slate mb-4">Absent more than 2 days — call them and their parents</p>
+        <div className="space-y-2">
+          {calledAbsent.map((m: any) => <AbsentStudentRow key={m.studentId} m={m} />)}
+          {calledAbsent.length === 0 && <p className="text-sm text-slate">No students absent more than 2 days.</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AbsentStudentRow({ m }: { m: any }) {
+  const phones = [m.parentPhone, m.studentPhone].filter(Boolean);
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm py-1.5 border-b border-gray-50 last:border-0">
+      <div className="min-w-0">
+        <p className="text-ink font-medium truncate">{m.fullName}</p>
+        {phones.length > 0 && (
+          <p className="text-xs text-slate truncate">{phones.join(' · ')}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-3 shrink-0">
+        <span className="text-status-absent font-medium">{m.absentCount} absences</span>
+        {phones.length > 0 && (
+          <a
+            className="btn-gold px-3 py-1 text-xs"
+            href={`tel:${phones[0]}`}
+            title={`Call ${m.fullName}`}
+          >
+            Call
+          </a>
+        )}
       </div>
     </div>
   );

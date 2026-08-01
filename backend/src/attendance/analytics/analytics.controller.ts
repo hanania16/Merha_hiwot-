@@ -31,7 +31,10 @@ export class AttendanceAnalyticsController {
   }
 
   @Get('most-absent')
-  mostAbsent(@Query('limit') limit?: string) {
-    return this.analyticsService.mostFrequentlyAbsent(limit ? Number(limit) : 10);
+  mostAbsent(@Query('limit') limit?: string, @Query('minAbsences') minAbsences?: string) {
+    return this.analyticsService.mostFrequentlyAbsent(
+      limit ? Number(limit) : 10,
+      minAbsences ? Number(minAbsences) : 2,
+    );
   }
 }

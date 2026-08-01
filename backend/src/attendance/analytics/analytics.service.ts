@@ -106,12 +106,20 @@ export class AttendanceAnalyticsService {
     return buckets;
   }
 
-  async mostFrequentlyAbsent(limit = 10) {
+  async mostFrequentlyAbsent(limit = 10, minAbsences = 2) {
     const students = await this.prisma.student.findMany({ where: { status: 'ACTIVE' } });
     const results = [];
     for (const s of students) {
       const absentCount = await this.prisma.attendance.count({ where: { studentId: s.id, status: 'ABSENT' } });
-      if (absentCount > 0) results.push({ studentId: s.id, fullName: s.fullName, absentCount });
+      if (absentCount >= minAbsences) {
+        results.push({
+          studentId: s.id,
+          fullName: s.fullName,
+          studentPhone: s.studentPhone,
+          parentPhone: s.parentPhone,
+          absentCount,
+        });
+      }
     }
     return results.sort((a, b) => b.absentCount - a.absentCount).slice(0, limit);
   }

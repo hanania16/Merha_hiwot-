@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ExpenseService } from './expense.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
+import { UpdateExpenseDto } from './dto/update-expense.dto';
+import { ApproveTransactionDto } from './dto/approve-transaction.dto';
 import { QueryExpenseDto } from './dto/query-expense.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
@@ -22,8 +24,13 @@ export class ExpenseController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: Partial<CreateExpenseDto>, @CurrentUser() user: CurrentUserPayload) {
+  update(@Param('id') id: string, @Body() dto: UpdateExpenseDto, @CurrentUser() user: CurrentUserPayload) {
     return this.expenseService.update(id, dto, user.userId);
+  }
+
+  @Post(':id/approve')
+  approve(@Param('id') id: string, @Body() dto: ApproveTransactionDto, @CurrentUser() user: CurrentUserPayload) {
+    return this.expenseService.approve(id, dto, user.userId);
   }
 
   @Delete(':id')

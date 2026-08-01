@@ -1,22 +1,27 @@
 import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { ExpenseCategory, PaymentMethod } from '@prisma/client';
 
-export class CreateExpenseDto {
+export class UpdateExpenseDto {
+  @IsOptional()
   @IsDateString()
-  date: string;
+  date?: string;
 
+  @IsOptional()
   @IsNumber()
   @Min(0.01)
-  amount: number;
+  amount?: number;
 
+  @IsOptional()
   @IsEnum(ExpenseCategory)
-  category: ExpenseCategory;
+  category?: ExpenseCategory;
 
+  @IsOptional()
   @IsEnum(PaymentMethod)
-  paymentMethod: PaymentMethod;
+  paymentMethod?: PaymentMethod;
 
+  @IsOptional()
   @IsUUID()
-  accountId: string;
+  accountId?: string;
 
   @IsOptional()
   @IsString()
@@ -33,4 +38,7 @@ export class CreateExpenseDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsString()
+  reason: string;
 }

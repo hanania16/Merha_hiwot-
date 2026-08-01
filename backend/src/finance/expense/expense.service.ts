@@ -1,8 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { ApprovalDecision } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
+import { FinanceAuditService } from '../../services/financeAuditService';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
+import { UpdateExpenseDto } from './dto/update-expense.dto';
+import { ApproveTransactionDto } from './dto/approve-transaction.dto';
 import { QueryExpenseDto } from './dto/query-expense.dto';
 
 @Injectable()
@@ -11,12 +15,14 @@ export class ExpenseService {
     private prisma: PrismaService,
     private audit: AuditService,
     private notifications: NotificationsService,
+    private financeAudit: FinanceAuditService,
   ) {}
 
   findAll(query: QueryExpenseDto) {
     return this.prisma.expense.findMany({
       where: {
         category: query.category,
+        status: query.status,
         date: {
           gte: query.from ? new Date(query.from) : undefined,
           lte: query.to ? new Date(query.to) : undefined,
@@ -25,6 +31,7 @@ export class ExpenseService {
       include: {
         recordedBy: { select: { fullName: true } },
         approvedBy: { select: { fullName: true } },
+        account: { select: { name: true, type: true } },
       },
       orderBy: { date: 'desc' },
     });
@@ -36,14 +43,19 @@ export class ExpenseService {
         date: new Date(dto.date),
         amount: dto.amount,
         category: dto.category,
+        paymentMethod: dto.paymentMethod,
         description: dto.description,
-        approvedById: dto.approvedById,
+        referenceNumber: dto.referenceNumber,
+        receiptDocumentUrl: dto.receiptDocumentUrl,
+        notes: dto.notes,
+        accountId: dto.accountId,
         recordedById: userId,
       },
     });
 
     await this.audit.log({
       userId,
+      changedBy: userId,
       action: 'EXPENSE_RECORDED',
       entityType: 'Expense',
       entityId: expense.id,
@@ -55,24 +67,25 @@ export class ExpenseService {
     return expense;
   }
 
-  async update(id: string, dto: Partial<CreateExpenseDto>, userId: string) {
-    const existing = await this.prisma.expense.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('Expense record not found');
-
-    const updated = await this.prisma.expense.update({
-      where: { id },
-      data: { ...dto, date: dto.date ? new Date(dto.date) : undefined },
-    });
-
-    await this.audit.log({
-      userId,
-      action: 'EXPENSE_UPDATED',
+  async update(id: string, dto: UpdateExpenseDto, userId: string) {
+    const { reason, ...changes } = dto;
+    return this.financeAudit.auditedUpdate({
       entityType: 'Expense',
-      entityId: id,
-      oldValue: existing,
-      newValue: updated,
+      id,
+      changes,
+      changedBy: userId,
+      reason,
     });
-    return updated;
+  }
+
+  async approve(id: string, dto: ApproveTransactionDto, userId: string) {
+    return this.financeAudit.approveTransaction({
+      entityType: 'Expense',
+      id,
+      approverId: userId,
+      decision: dto.decision as ApprovalDecision,
+      comments: dto.comments,
+    });
   }
 
   async remove(id: string, userId: string) {
@@ -81,6 +94,7 @@ export class ExpenseService {
     await this.prisma.expense.delete({ where: { id } });
     await this.audit.log({
       userId,
+      changedBy: userId,
       action: 'EXPENSE_DELETED',
       entityType: 'Expense',
       entityId: id,

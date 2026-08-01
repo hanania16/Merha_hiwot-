@@ -1,8 +1,9 @@
 import { IsDateString, IsEnum, IsOptional } from 'class-validator';
-import { ExpenseCategory } from '@prisma/client';
+import { ExpenseCategory, TransactionStatus } from '@prisma/client';
 
 export class QueryExpenseDto {
   @IsOptional() @IsDateString() from?: string;
   @IsOptional() @IsDateString() to?: string;
   @IsOptional() @IsEnum(ExpenseCategory) category?: ExpenseCategory;
+  @IsOptional() @IsEnum(TransactionStatus) status?: TransactionStatus;
 }

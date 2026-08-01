@@ -7,18 +7,22 @@ export class AuditService {
 
   async log(params: {
     userId?: string;
+    changedBy?: string;
     action: string;
     entityType: string;
     entityId: string;
+    reason?: string;
     oldValue?: unknown;
     newValue?: unknown;
   }) {
     return this.prisma.auditLog.create({
       data: {
         userId: params.userId,
+        changedById: params.changedBy,
         action: params.action,
         entityType: params.entityType,
         entityId: params.entityId,
+        reason: params.reason,
         oldValue: params.oldValue as any,
         newValue: params.newValue as any,
       },

@@ -1,10 +1,15 @@
-import { Controller, Get, Query, Res } from '@nestjs/common';
-import { Response } from 'express';
+import { Controller, Get, Query, Req, Res } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { FinanceReportsService } from './reports.service';
 import { exportToExcel, exportToPdf } from './export.util';
+import { exportAuditPdf } from './audit-pdf.export';
+import { exportAuditExcel } from './audit-excel.export';
+import { AuditReport } from './audit-report.types';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
-import { currentEthiopianYear } from '../../common/constants/ethiopian-calendar';
+import { currentEthiopianYear, toEthiopian } from '../../common/constants/ethiopian-calendar';
+
+const EXPORT_FORMATS = ['pdf', 'excel'];
 
 @Roles(Role.FINANCE_OFFICER, Role.ADMINISTRATOR)
 @Controller('finance/reports')
@@ -30,6 +35,61 @@ export class FinanceReportsController {
   @Get('student-fees')
   studentFees(@Query('year') year?: string) {
     return this.reportsService.studentFeeReport(year ? Number(year) : currentEthiopianYear());
+  }
+
+  @Get('monthly')
+  monthly(@Query('year') year?: string, @Query('month') month?: string) {
+    const today = toEthiopian(new Date());
+    const y = year ? Number(year) : today.year;
+    const m = month ? Number(month) : today.month;
+    return this.reportsService.monthlyReport(y, m);
+  }
+
+  @Get('yearly')
+  yearly(@Query('year') year?: string) {
+    const y = year ? Number(year) : currentEthiopianYear();
+    return this.reportsService.yearlyReport(y);
+  }
+
+  @Get('monthly/export')
+  async monthlyExport(
+    @Res() res: Response,
+    @Req() req: Request,
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+    @Query('format') format = 'pdf',
+  ) {
+    const today = toEthiopian(new Date());
+    const y = year ? Number(year) : today.year;
+    const m = month ? Number(month) : today.month;
+    const report = await this.reportsService.monthlyReport(y, m);
+    await this.writeExport(res, format, `audit-report-monthly-${y}-${m}`, report, this.currentUserEmail(req));
+  }
+
+  @Get('yearly/export')
+  async yearlyExport(
+    @Res() res: Response,
+    @Req() req: Request,
+    @Query('year') year?: string,
+    @Query('format') format = 'pdf',
+  ) {
+    const y = year ? Number(year) : currentEthiopianYear();
+    const report = await this.reportsService.yearlyReport(y);
+    await this.writeExport(res, format, `audit-report-yearly-${y}`, report, this.currentUserEmail(req));
+  }
+
+  private currentUserEmail(req: Request): string | undefined {
+    return (req.user as { email?: string } | undefined)?.email;
+  }
+
+  private async writeExport(res: Response, format: string, filename: string, report: AuditReport, generatedBy?: string) {
+    const fmt = EXPORT_FORMATS.includes(format) ? format : 'pdf';
+    const by = generatedBy ?? 'system';
+    if (fmt === 'excel') {
+      await exportAuditExcel(res, report, filename, by);
+    } else {
+      await exportAuditPdf(res, report, filename, by);
+    }
   }
 
   @Get('financial/export/excel')

@@ -1,9 +1,287 @@
 import { Injectable } from '@nestjs/common';
+import { ReconciliationStatus, TransactionStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { toGregorian } from '../../common/constants/ethiopian-calendar';
+
+const DISCREPANCY_STATUSES: ReconciliationStatus[] = [
+  ReconciliationStatus.DISCREPANCY_FOUND,
+  ReconciliationStatus.UNDER_INVESTIGATION,
+];
+
+const LEDGER_AUDIT_ENTITY_TYPES = ['Income', 'Expense'];
+
+const REVIEW_CUTOFF_MS = 7 * 24 * 60 * 60 * 1000;
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Normalise a converted Ethiopian date to UTC midnight so it matches how transaction dates are stored. */
+function toUtcMidnight(d: Date): Date {
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+}
+
+/** Gregorian [from, to) range for one Ethiopian month (13 = Pagume). */
+function ethiopianMonthRange(year: number, month: number): { from: Date; to: Date } {
+  const from = toUtcMidnight(toGregorian(year, month, 1));
+  const to =
+    month === 13
+      ? toUtcMidnight(toGregorian(year + 1, 1, 1))
+      : toUtcMidnight(toGregorian(year, month + 1, 1));
+  return { from, to };
+}
+
+/** Gregorian [from, to) range for one Ethiopian year (Meskerem 1 → next Meskerem 1). */
+function ethiopianYearRange(year: number): { from: Date; to: Date } {
+  return {
+    from: toUtcMidnight(toGregorian(year, 1, 1)),
+    to: toUtcMidnight(toGregorian(year + 1, 1, 1)),
+  };
+}
 
 @Injectable()
 export class FinanceReportsService {
   constructor(private prisma: PrismaService) {}
+
+  /** Full audit report for a Gregorian [from, to) window derived from an Ethiopian period. */
+  private async auditRollup(kind: 'monthly' | 'yearly', from: Date, to: Date) {
+    const [incomes, expenses, accounts, reconsInPeriod, auditLogs] = await Promise.all([
+      this.prisma.income.findMany({
+        where: { date: { gte: from, lt: to } },
+        include: {
+          account: { select: { id: true, name: true, type: true } },
+          student: { select: { id: true, fullName: true, studentCode: true } },
+          recordedBy: { select: { fullName: true } },
+        },
+        orderBy: { date: 'asc' },
+      }),
+      this.prisma.expense.findMany({
+        where: { date: { gte: from, lt: to } },
+        include: {
+          account: { select: { id: true, name: true, type: true } },
+          recordedBy: { select: { fullName: true } },
+        },
+        orderBy: { date: 'asc' },
+      }),
+      this.prisma.account.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, type: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.reconciliation.findMany({
+        where: { createdAt: { gte: from, lt: to } },
+        include: { account: { select: { name: true } } },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.auditLog.findMany({
+        where: {
+          entityType: { in: LEDGER_AUDIT_ENTITY_TYPES },
+          reason: { not: null },
+          createdAt: { gte: from, lt: to },
+        },
+        include: { changedBy: { select: { fullName: true } } },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
+
+    const approvedIncomes = incomes.filter((i) => i.status === TransactionStatus.APPROVED);
+    const approvedExpenses = expenses.filter((e) => e.status === TransactionStatus.APPROVED);
+
+    // 1 + 2. Approved income by sourceType / approved expense by category, with record IDs.
+    const incomeBySourceType: Record<string, { total: number; count: number; recordIds: string[] }> = {};
+    for (const i of approvedIncomes) {
+      const g = (incomeBySourceType[i.sourceType] ??= { total: 0, count: 0, recordIds: [] });
+      g.total = round2(g.total + Number(i.amount));
+      g.count += 1;
+      g.recordIds.push(i.id);
+    }
+    const expenseByCategory: Record<string, { total: number; count: number; recordIds: string[] }> = {};
+    for (const e of approvedExpenses) {
+      const g = (expenseByCategory[e.category] ??= { total: 0, count: 0, recordIds: [] });
+      g.total = round2(g.total + Number(e.amount));
+      g.count += 1;
+      g.recordIds.push(e.id);
+    }
+
+    // 3. Expected vs actual per account — stored Reconciliation, never recomputed.
+    //    For each account take the latest reconciliation whose periodEnd <= report end.
+    const latestReconByAccount = new Map<string, (typeof allRecons)[number]>();
+    const allRecons = await this.prisma.reconciliation.findMany({
+      where: { periodEnd: { lte: to } },
+      orderBy: [{ periodEnd: 'desc' }, { createdAt: 'desc' }],
+    });
+    for (const r of allRecons) {
+      if (!latestReconByAccount.has(r.accountId)) latestReconByAccount.set(r.accountId, r);
+    }
+    const accountBalances = accounts.map((a) => {
+      const rec = latestReconByAccount.get(a.id);
+      return rec
+        ? {
+            accountId: a.id,
+            accountName: a.name,
+            accountType: a.type,
+            reconciliationId: rec.id,
+            expectedBalance: Number(rec.expectedBalance),
+            actualBalance: Number(rec.actualBalance),
+            discrepancy: Number(rec.discrepancy),
+            status: rec.status,
+            periodStart: rec.periodStart,
+            periodEnd: rec.periodEnd,
+          }
+        : {
+            accountId: a.id,
+            accountName: a.name,
+            accountType: a.type,
+            reconciliationId: null,
+            expectedBalance: null,
+            actualBalance: null,
+            discrepancy: null,
+            status: null,
+            periodStart: null,
+            periodEnd: null,
+          };
+    });
+
+    // 4. Discrepancies found during the period (DISCREPANCY_FOUND or UNDER_INVESTIGATION).
+    const discrepancies = reconsInPeriod
+      .filter((r) => DISCREPANCY_STATUSES.includes(r.status))
+      .map((r) => ({
+        reconciliationId: r.id,
+        accountId: r.accountId,
+        accountName: r.account.name,
+        expectedBalance: Number(r.expectedBalance),
+        actualBalance: Number(r.actualBalance),
+        discrepancy: Number(r.discrepancy),
+        status: r.status,
+        resolutionNotes: r.resolutionNotes,
+        resolvedAt: r.resolvedAt,
+        createdAt: r.createdAt,
+      }));
+
+    // 5. Missing receipts — income in period with no receipt attached.
+    const missingReceiptRows = incomes.filter((i) => i.receiptId === null);
+    const missingReceipts = {
+      total: missingReceiptRows.length,
+      records: missingReceiptRows.map((i) => ({
+        id: i.id,
+        date: i.date,
+        amount: Number(i.amount),
+        sourceType: i.sourceType,
+        status: i.status,
+        accountId: i.accountId,
+        description: i.description,
+      })),
+    };
+
+    // 6. Pending approvals — regardless of when they were created.
+    const [pendingIncome, pendingExpense] = await Promise.all([
+      this.prisma.income.findMany({
+        where: { status: TransactionStatus.PENDING_APPROVAL },
+        select: { id: true, date: true, amount: true, sourceType: true, category: true, description: true, createdAt: true, accountId: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.expense.findMany({
+        where: { status: TransactionStatus.PENDING_APPROVAL },
+        select: { id: true, date: true, amount: true, category: true, description: true, createdAt: true, accountId: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
+    const pendingApprovals = {
+      total: pendingIncome.length + pendingExpense.length,
+      income: pendingIncome.map((i) => ({ id: i.id, date: i.date, amount: Number(i.amount), sourceType: i.sourceType, createdAt: i.createdAt, accountId: i.accountId })),
+      expense: pendingExpense.map((e) => ({ id: e.id, date: e.date, amount: Number(e.amount), category: e.category, createdAt: e.createdAt, accountId: e.accountId })),
+    };
+
+    // 7. Adjustments — audit trail entries for Income/Expense with a reason (post-creation edits, approvals, rejections).
+    const adjustments = auditLogs.map((l) => ({
+      id: l.id,
+      entityType: l.entityType,
+      entityId: l.entityId,
+      action: l.action,
+      reason: l.reason,
+      changedById: l.changedById,
+      changedByName: l.changedBy?.fullName ?? null,
+      createdAt: l.createdAt,
+      oldValue: l.oldValue,
+      newValue: l.newValue,
+    }));
+
+    // 8. Flat "requires review" — unresolved discrepancies, missing receipts, pending approvals older than 7 days.
+    const reviewCutoff = new Date(Date.now() - REVIEW_CUTOFF_MS);
+    const overduePending = [
+      ...pendingIncome.map((i) => ({ ...i, entityType: 'Income' as const })),
+      ...pendingExpense.map((e) => ({ ...e, entityType: 'Expense' as const })),
+    ].filter((p) => p.createdAt < reviewCutoff);
+
+    const requiresReviewItems: Array<Record<string, unknown>> = [
+      ...discrepancies.map((d) => ({
+        type: 'RECONCILIATION_DISCREPANCY',
+        reconciliationId: d.reconciliationId,
+        accountId: d.accountId,
+        accountName: d.accountName,
+        expectedBalance: d.expectedBalance,
+        actualBalance: d.actualBalance,
+        amount: d.discrepancy,
+      })),
+      ...missingReceiptRows.map((i) => ({
+        type: 'MISSING_RECEIPT',
+        incomeId: i.id,
+        accountId: i.accountId,
+        amount: Number(i.amount),
+      })),
+      ...overduePending.map((p) => ({
+        type: 'PENDING_APPROVAL',
+        transactionId: p.id,
+        entityType: p.entityType,
+        accountId: p.accountId,
+        amount: Number(p.amount),
+        ageDays: Math.floor((Date.now() - p.createdAt.getTime()) / (24 * 60 * 60 * 1000)),
+      })),
+    ];
+
+    const totalIncome = approvedIncomes.reduce((s, i) => s + Number(i.amount), 0);
+    const totalExpense = approvedExpenses.reduce((s, e) => s + Number(e.amount), 0);
+
+    return {
+      kind,
+      period: { from, to },
+      summary: {
+        totalIncome: round2(totalIncome),
+        totalExpense: round2(totalExpense),
+        net: round2(totalIncome - totalExpense),
+        incomeCount: approvedIncomes.length,
+        expenseCount: approvedExpenses.length,
+      },
+      incomeBySourceType,
+      expenseByCategory,
+      accountBalances,
+      discrepancies,
+      missingReceipts,
+      pendingApprovals,
+      adjustments,
+      requiresReview: { total: requiresReviewItems.length, items: requiresReviewItems },
+      transactions: {
+        income: incomes.map((i) => ({
+          ...i,
+          amount: Number(i.amount),
+          recordedByName: i.recordedBy?.fullName ?? null,
+        })),
+        expense: expenses.map((e) => ({
+          ...e,
+          amount: Number(e.amount),
+          recordedByName: e.recordedBy?.fullName ?? null,
+        })),
+      },
+    };
+  }
+
+  async monthlyReport(year: number, month: number) {
+    const { from, to } = ethiopianMonthRange(year, month);
+    return this.auditRollup('monthly', from, to);
+  }
+
+  async yearlyReport(year: number) {
+    const { from, to } = ethiopianYearRange(year);
+    return this.auditRollup('yearly', from, to);
+  }
 
   async buildFinancialReport(from: Date, to: Date) {
     const [incomes, expenses] = await Promise.all([

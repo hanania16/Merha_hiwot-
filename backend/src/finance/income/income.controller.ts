@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { IncomeService } from './income.service';
 import { CreateIncomeDto } from './dto/create-income.dto';
+import { UpdateIncomeDto } from './dto/update-income.dto';
+import { ApproveTransactionDto } from './dto/approve-transaction.dto';
 import { QueryIncomeDto } from './dto/query-income.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
@@ -22,8 +24,13 @@ export class IncomeController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: Partial<CreateIncomeDto>, @CurrentUser() user: CurrentUserPayload) {
+  update(@Param('id') id: string, @Body() dto: UpdateIncomeDto, @CurrentUser() user: CurrentUserPayload) {
     return this.incomeService.update(id, dto, user.userId);
+  }
+
+  @Post(':id/approve')
+  approve(@Param('id') id: string, @Body() dto: ApproveTransactionDto, @CurrentUser() user: CurrentUserPayload) {
+    return this.incomeService.approve(id, dto, user.userId);
   }
 
   @Delete(':id')

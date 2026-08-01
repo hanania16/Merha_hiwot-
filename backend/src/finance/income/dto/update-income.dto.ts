@@ -1,25 +1,31 @@
 import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { IncomeCategory, IncomeSourceType, PaymentMethod } from '@prisma/client';
 
-export class CreateIncomeDto {
+export class UpdateIncomeDto {
+  @IsOptional()
   @IsDateString()
-  date: string;
+  date?: string;
 
+  @IsOptional()
   @IsNumber()
   @Min(0.01)
-  amount: number;
+  amount?: number;
 
+  @IsOptional()
   @IsEnum(IncomeCategory)
-  category: IncomeCategory;
+  category?: IncomeCategory;
 
+  @IsOptional()
   @IsEnum(IncomeSourceType)
-  sourceType: IncomeSourceType;
+  sourceType?: IncomeSourceType;
 
+  @IsOptional()
   @IsEnum(PaymentMethod)
-  paymentMethod: PaymentMethod;
+  paymentMethod?: PaymentMethod;
 
+  @IsOptional()
   @IsUUID()
-  accountId: string;
+  accountId?: string;
 
   @IsOptional()
   @IsString()
@@ -44,4 +50,7 @@ export class CreateIncomeDto {
   @IsOptional()
   @IsUUID()
   studentId?: string;
+
+  @IsString()
+  reason: string;
 }

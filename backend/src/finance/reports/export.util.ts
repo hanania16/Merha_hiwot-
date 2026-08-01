@@ -1,10 +1,13 @@
 import * as ExcelJS from 'exceljs';
-import PDFDocument from 'pdfkit';
+import PDFDocument = require('pdfkit');
 import { Response } from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
 
 const LOGO_PATH = path.join(process.cwd(), 'assets', 'logo.jpg');
+
+const FONT_REG = path.join(process.cwd(), 'assets', 'fonts', 'NotoSansEthiopic-Regular.ttf');
+const FONT_BOLD = path.join(process.cwd(), 'assets', 'fonts', 'NotoSansEthiopic-Bold.ttf');
 
 export async function exportToExcel(
   res: Response,
@@ -36,6 +39,9 @@ export function exportToPdf(res: Response, filename: string, title: string, line
     doc.moveDown(4);
   }
 
+  if (fs.existsSync(FONT_REG)) doc.registerFont('Ethiopic', FONT_REG);
+  if (fs.existsSync(FONT_BOLD)) doc.registerFont('EthiopicBold', FONT_BOLD);
+  if (fs.existsSync(FONT_BOLD)) doc.font('EthiopicBold');
   doc.fontSize(18).fillColor('#111111').text('መርሃ ህይወት ሰ/ቤት', { align: 'center' });
   doc.fontSize(10).fillColor('#4B5563').text('Sunday School Management System', { align: 'center' });
   doc.moveDown(0.5);

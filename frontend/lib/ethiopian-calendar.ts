@@ -35,7 +35,7 @@ export function toEthiopian(gregorian: Date): { year: number; month: number; day
   const r = (jdn - JD_EPOCH_OFFSET_AMETE_MIHRET) % 1461;
   const n = (r % 365) + 365 * Math.floor(r / 1460);
   const year =
-    4 * Math.floor((jdn - JD_EPOCH_OFFSET_AMETE_MIHRET) / 1461) + Math.floor(r / 365) - Math.floor(r / 1460) + 1;
+    4 * Math.floor((jdn - JD_EPOCH_OFFSET_AMETE_MIHRET) / 1461) + Math.floor(r / 365) - Math.floor(r / 1460);
   const month = Math.floor(n / 30) + 1;
   const day = (n % 30) + 1;
   return { year, month, day };
@@ -69,17 +69,16 @@ export function toGregorian(year: number, month: number, day: number): Date {
   const JD_EPOCH_OFFSET_AMETE_MIHRET = 1723856;
   const jdn =
     JD_EPOCH_OFFSET_AMETE_MIHRET +
-    365 * (year - 1) +
-    Math.floor(year / 4) +
-    30 * month -
-    30 +
+    1461 * Math.floor(year / 4) +
+    365 * (year % 4) +
+    30 * (month - 1) +
     (day - 1);
   return jdnToGregorian(jdn);
 }
 
-/** Ethiopian year is a leap year (Pagume has 6 days instead of 5). */
+/** Ethiopian year is a leap year (Pagume has 6 days instead of 5). Aligned with toEthiopian/toGregorian. */
 export function isEthiopianLeapYear(year: number): boolean {
-  return year % 4 === 0;
+  return year % 4 === 3;
 }
 
 /** Max days in an Ethiopian month (1-12 have 30, Pagume has 5 or 6). */

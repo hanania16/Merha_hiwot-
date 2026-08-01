@@ -26,6 +26,8 @@ export class AttendanceRecordsService {
 
     const results = [];
     const autoInactivated: { studentId: string; fullName: string }[] = [];
+    let createdCount = 0;
+    let updatedCount = 0;
 
     for (const entry of dto.entries) {
       const existing = await this.prisma.attendance.findUnique({
@@ -37,6 +39,9 @@ export class AttendanceRecordsService {
         update: { status: entry.status, recordedById: userId },
         create: { studentId: entry.studentId, eventId: event.id, status: entry.status, recordedById: userId },
       });
+
+      if (existing) updatedCount++;
+      else createdCount++;
 
       await this.audit.log({
         userId,
@@ -55,7 +60,7 @@ export class AttendanceRecordsService {
         if (inactivated) autoInactivated.push(inactivated);
       }
     }
-    return { event, records: results, autoInactivated };
+    return { event, records: results, autoInactivated, createdCount, updatedCount };
   }
 
   /** Runs after every ABSENT mark; auto-inactivates on the 5th consecutive absence. */
@@ -119,16 +124,22 @@ export class AttendanceRecordsService {
         event: { date: { gte: start, lte: end } },
       },
     });
-    const statusMap = new Map(existingRecords.map((r) => [r.studentId, r.status]));
+    const recordMap = new Map(existingRecords.map((r) => [r.studentId, r]));
 
-    return students.map((s) => ({
-      studentId: s.id,
-      fullName: s.fullName,
-      fullNameAmharic: s.fullNameAmharic,
-      studentCode: s.studentCode,
-      className: s.class.name,
-      currentStatus: statusMap.get(s.id) ?? null,
-    }));
+    return students.map((s) => {
+      const rec = recordMap.get(s.id);
+      return {
+        studentId: s.id,
+        fullName: s.fullName,
+        fullNameAmharic: s.fullNameAmharic,
+        studentCode: s.studentCode,
+        className: s.class.name,
+        currentStatus: rec?.status ?? null,
+        attendanceId: rec?.id ?? null,
+        createdAt: rec?.createdAt ?? null,
+        updatedAt: rec?.updatedAt ?? null,
+      };
+    });
   }
 
   async editAttendance(id: string, status: 'PRESENT' | 'ABSENT' | 'PERMISSION' | 'LATE', userId: string) {

@@ -14,6 +14,9 @@ interface RosterEntry {
   studentCode: string;
   className: string;
   currentStatus: 'PRESENT' | 'ABSENT' | 'PERMISSION' | 'LATE' | null;
+  attendanceId: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 }
 
 const EVENT_TYPES = [
@@ -40,6 +43,8 @@ export default function TakeAttendancePage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [editedAt, setEditedAt] = useState('');
 
   useEffect(() => {
     api.get<ClassGroup[]>('/students/classes').then((cls) => {
@@ -54,10 +59,15 @@ export default function TakeAttendancePage() {
     const data = await api.get<RosterEntry[]>(`/attendance/records/roster?classId=${classId}&date=${date}`);
     setRoster(data);
     setStatuses(Object.fromEntries(data.map((r) => [r.studentId, r.currentStatus ?? 'PRESENT'])));
+    setEditing(false);
+    setSavedMsg('');
+    setEditedAt('');
     setLoading(false);
   }
 
   useEffect(() => { loadRoster(); /* eslint-disable-next-line */ }, [classId, date]);
+
+  const isSaved = roster.some((r) => r.currentStatus !== null);
 
   function setAll(status: string) {
     setStatuses(Object.fromEntries(roster.map((r) => [r.studentId, status])));
@@ -67,17 +77,33 @@ export default function TakeAttendancePage() {
     setSaving(true);
     setSavedMsg('');
     try {
-      const result = await api.post<{ autoInactivated: { studentId: string; fullName: string }[] }>('/attendance/records/bulk', {
+      const result = await api.post<{
+        autoInactivated: { studentId: string; fullName: string }[];
+        updatedCount: number;
+        records: { updatedAt: string }[];
+      }>('/attendance/records/bulk', {
         date,
         eventType,
         title: title || '',
         entries: roster.map((r) => ({ studentId: r.studentId, status: statuses[r.studentId] ?? 'PRESENT' })),
       });
-      let msg = `Saved attendance for ${roster.length} students.`;
-      if (result.autoInactivated?.length) {
-        msg += ` ${result.autoInactivated.map((s) => s.fullName).join(', ')} reached 5 consecutive absences and moved to Inactive Students.`;
+      if (result.updatedCount > 0) {
+        const last = result.records.map((r) => new Date(r.updatedAt).getTime()).sort((a, b) => b - a)[0];
+        const d = new Date(last);
+        setEditedAt(d.toLocaleString());
+        let msg = `Attendance edited for ${roster.length} students.`;
+        if (result.autoInactivated?.length) {
+          msg += ` ${result.autoInactivated.map((s) => s.fullName).join(', ')} reached 5 consecutive absences and moved to Inactive Students.`;
+        }
+        setSavedMsg(msg);
+      } else {
+        let msg = `Saved attendance for ${roster.length} students.`;
+        if (result.autoInactivated?.length) {
+          msg += ` ${result.autoInactivated.map((s) => s.fullName).join(', ')} reached 5 consecutive absences and moved to Inactive Students.`;
+        }
+        setSavedMsg(msg);
       }
-      setSavedMsg(msg);
+      setEditing(false);
       loadRoster();
     } finally {
       setSaving(false);
@@ -113,15 +139,26 @@ export default function TakeAttendancePage() {
 
       <div className="flex items-center justify-between mb-3">
         <div className="flex gap-2">
-          <button className="btn-outline text-xs" onClick={() => setAll('PRESENT')}>Mark all Present</button>
-          <button className="btn-outline text-xs" onClick={() => setAll('ABSENT')}>Mark all Absent</button>
+          <button className="btn-outline text-xs" onClick={() => setAll('PRESENT')} disabled={isSaved && !editing}>Mark all Present</button>
+          <button className="btn-outline text-xs" onClick={() => setAll('ABSENT')} disabled={isSaved && !editing}>Mark all Absent</button>
         </div>
-        <button className="btn-gold" onClick={save} disabled={saving || roster.length === 0}>
-          {saving ? 'Saving…' : 'Save Attendance'}
-        </button>
+        {isSaved && !editing ? (
+          <button className="btn-gold" onClick={() => setEditing(true)}>Edit</button>
+        ) : (
+          <div className="flex gap-2">
+            {isSaved && <button className="btn-outline" onClick={() => loadRoster()}>Cancel</button>}
+            <button className="btn-gold" onClick={save} disabled={saving || roster.length === 0}>
+              {saving ? 'Saving…' : 'Save Attendance'}
+            </button>
+          </div>
+        )}
       </div>
 
+      {isSaved && !editing && (
+        <p className="text-sm text-status-present mb-3">Attendance has already been saved for this date. Click Edit to make changes.</p>
+      )}
       {savedMsg && <p className="text-sm text-status-present mb-3">{savedMsg}</p>}
+      {editedAt && <p className="text-sm text-status-warning mb-3">This attendance was edited at {editedAt}.</p>}
 
       <div className="card overflow-x-auto">
         <table className="table-base">
@@ -138,10 +175,11 @@ export default function TakeAttendancePage() {
                     {(['PRESENT', 'ABSENT', 'LATE', 'PERMISSION'] as const).map((s) => (
                       <button
                         key={s}
+                        disabled={isSaved && !editing}
                         onClick={() => setStatuses((prev) => ({ ...prev, [r.studentId]: s }))}
                         className={`text-xs px-3 py-1.5 rounded-lg border ${
                           statuses[r.studentId] === s ? STATUS_STYLES[s] : 'border-gray-200 text-slate hover:bg-mist'
-                        }`}
+                        } disabled:opacity-60 disabled:cursor-not-allowed`}
                       >
                         {s}
                       </button>

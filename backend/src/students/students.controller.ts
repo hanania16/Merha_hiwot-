@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { StudentsService } from './students.service';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
@@ -53,5 +53,11 @@ export class StudentsController {
     @CurrentUser() user: CurrentUserPayload,
   ) {
     return this.studentsService.setStatus(id, status, user.userId);
+  }
+
+  @Roles(Role.ATTENDANCE_OFFICER, Role.ADMINISTRATOR)
+  @Delete(':id')
+  remove(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.studentsService.remove(id, user.userId);
   }
 }

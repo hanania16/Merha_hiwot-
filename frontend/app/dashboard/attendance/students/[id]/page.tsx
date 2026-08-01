@@ -47,6 +47,9 @@ export default function StudentProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [classes, setClasses] = useState<ClassGroup[]>([]);
   const [showEdit, setShowEdit] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
     setLeftSlot(<button key="back" onClick={() => router.back()} className="font-bold text-xl hover:text-gold shrink-0 leading-none">&larr;</button>);
@@ -64,6 +67,7 @@ export default function StudentProfilePage() {
     <div>
       <Topbar title={profile.fullName} subtitle={`${profile.class.name} · Age ${profile.age} · ${profile.gender}`}>
         <button className="btn-gold text-sm" onClick={() => setShowEdit(true)}>Edit</button>
+        <button className="btn-danger text-sm" onClick={() => setShowDelete(true)}>Delete</button>
       </Topbar>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -151,6 +155,36 @@ export default function StudentProfilePage() {
           onClose={() => setShowEdit(false)}
           onSaved={() => { setShowEdit(false); api.get<Profile>(`/students/${id}`).then(setProfile); }}
         />
+      )}
+
+      {showDelete && (
+        <Modal open title="Delete Student" onClose={() => setShowDelete(false)}>
+          <p className="text-sm text-ink">
+            Are you sure you want to permanently delete <strong>{profile.fullName}</strong>?
+            This will erase all of their attendance records, fee payments, receipts, and inactivation history. This cannot be undone.
+          </p>
+          {deleteError && <p className="text-xs text-red-600 mt-2">{deleteError}</p>}
+          <div className="flex justify-end gap-2 pt-4">
+            <button className="btn-outline" onClick={() => setShowDelete(false)} disabled={deleting}>Cancel</button>
+            <button
+              className="btn-danger"
+              disabled={deleting}
+              onClick={async () => {
+                setDeleting(true);
+                setDeleteError('');
+                try {
+                  await api.delete(`/students/${id}`);
+                  router.push('/dashboard/attendance/students');
+                } catch (e: any) {
+                  setDeleteError(e.message || 'Failed to delete student.');
+                  setDeleting(false);
+                }
+              }}
+            >
+              {deleting ? 'Deleting…' : 'Delete Student'}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

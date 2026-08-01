@@ -82,6 +82,29 @@ export class StudentsService {
     return this.update(id, { status } as UpdateStudentDto, userId);
   }
 
+  async remove(id: string, userId: string) {
+    const existing = await this.prisma.student.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Student not found');
+
+    await this.prisma.$transaction([
+      this.prisma.eventAttendance.deleteMany({ where: { studentId: id } }),
+      this.prisma.attendance.deleteMany({ where: { studentId: id } }),
+      this.prisma.receipt.deleteMany({ where: { studentId: id } }),
+      this.prisma.monthlyPayment.deleteMany({ where: { studentId: id } }),
+      this.prisma.inactivationRecord.deleteMany({ where: { studentId: id } }),
+      this.prisma.student.delete({ where: { id } }),
+    ]);
+
+    await this.audit.log({
+      userId,
+      action: 'STUDENT_DELETED',
+      entityType: 'Student',
+      entityId: id,
+      oldValue: existing,
+    });
+    return { success: true };
+  }
+
   async findOne(id: string) {
     const student = await this.prisma.student.findUnique({
       where: { id },

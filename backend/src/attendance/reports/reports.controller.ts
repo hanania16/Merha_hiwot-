@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Res } from '@nestjs/common';
+import { Controller, Get, Param, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { AttendanceReportsService } from './reports.service';
 import { exportToExcel, exportToPdf } from '../../finance/reports/export.util';
@@ -18,7 +18,7 @@ export class AttendanceReportsController {
   }
 
   @Get('class/:classId')
-  byClass(@Query('classId') classId: string) {
+  byClass(@Param('classId') classId: string) {
     return this.reportsService.classReport(classId);
   }
 
@@ -38,7 +38,7 @@ export class AttendanceReportsController {
   }
 
   @Get('class/:classId/export/excel')
-  async classExcel(@Query('classId') classId: string, @Res() res: Response) {
+  async classExcel(@Param('classId') classId: string, @Res() res: Response) {
     const rows = await this.reportsService.classReport(classId);
     await exportToExcel(
       res,

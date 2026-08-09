@@ -124,6 +124,11 @@ enum IncomeSourceType {
   OTHER
 }
 
+enum FinanceReportType {
+  MONTHLY
+  YEARLY
+}
+
 enum PaymentMethod {
   CASH
   BANK_TRANSFER
@@ -178,6 +183,7 @@ model User {
   approvals              TransactionApproval[] @relation("ApprovalApprover")
   reconciliations        Reconciliation[]      @relation("ReconciliationPerformedBy")
   reconciliationResolved Reconciliation[]      @relation("ReconciliationResolvedBy")
+  generatedReports       FinanceReport[]       @relation("ReportGeneratedBy")
 
   @@map("users")
 }
@@ -559,4 +565,21 @@ model AuditLog {
   @@index([createdAt])
   @@index([changedById])
   @@map("audit_logs")
+}
+
+model FinanceReport {
+  id            String            @id @default(uuid())
+  type          FinanceReportType
+  ethiopianYear Int
+  month         EthiopianMonth?
+  summary       Json
+  data          Json
+  generatedById String?
+  generatedBy   User?             @relation("ReportGeneratedBy", fields: [generatedById], references: [id])
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([type, ethiopianYear, month])
+  @@index([type, ethiopianYear])
+  @@map("finance_reports")
 }

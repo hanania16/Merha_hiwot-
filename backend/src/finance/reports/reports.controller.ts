@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, Req, Res } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { FinanceReportsService } from './reports.service';
 import { exportToExcel, exportToPdf } from './export.util';
@@ -6,6 +6,7 @@ import { exportAuditPdf } from './audit-pdf.export';
 import { exportAuditExcel } from './audit-excel.export';
 import { AuditReport } from './audit-report.types';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Role } from '@prisma/client';
 import { currentEthiopianYear, toEthiopian } from '../../common/constants/ethiopian-calendar';
 
@@ -49,6 +50,30 @@ export class FinanceReportsController {
   yearly(@Query('year') year?: string) {
     const y = year ? Number(year) : currentEthiopianYear();
     return this.reportsService.yearlyReport(y);
+  }
+
+  @Post('snapshot')
+  snapshot(
+    @Body() body: { type: 'MONTHLY' | 'YEARLY'; year?: number; month?: number },
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    const y = body.year ?? currentEthiopianYear();
+    return this.reportsService.snapshotNow(body.type, y, body.month, user.userId);
+  }
+
+  @Get('history')
+  history() {
+    return this.reportsService.listReportHistory();
+  }
+
+  @Get('history/:id')
+  historyOne(@Param('id') id: string) {
+    return this.reportsService.getReportSnapshot(id);
+  }
+
+  @Delete('history/:id')
+  historyRemove(@Param('id') id: string) {
+    return this.reportsService.removeReportSnapshot(id);
   }
 
   @Get('monthly/export')

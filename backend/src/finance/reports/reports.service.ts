@@ -1,7 +1,13 @@
-import { Injectable } from '@nestjs/common';
-import { ReconciliationStatus, TransactionStatus } from '@prisma/client';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, ReconciliationStatus, TransactionStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { toGregorian } from '../../common/constants/ethiopian-calendar';
+import {
+  toGregorian,
+  toEthiopian,
+  ETHIOPIAN_MONTHS,
+  isLastDayOfEthiopianMonth,
+  isLastDayOfEthiopianYear,
+} from '../../common/constants/ethiopian-calendar';
 
 const DISCREPANCY_STATUSES: ReconciliationStatus[] = [
   ReconciliationStatus.DISCREPANCY_FOUND,
@@ -353,5 +359,113 @@ export class FinanceReportsService {
       unpaidMonths: 13 - s.monthlyPayments.filter((p) => p.status === 'PAID').length,
       totalPaid: s.monthlyPayments.reduce((sum, p) => (p.status === 'PAID' ? sum + Number(p.amount) : sum), 0),
     }));
+  }
+
+  /** Deep-serialise a report (Dates become ISO strings) so it can be stored in a JSON column. */
+  private serialize(report: unknown): Prisma.InputJsonValue {
+    return JSON.parse(JSON.stringify(report)) as Prisma.InputJsonValue;
+  }
+
+  /** Builds and permanently saves a MONTHLY or YEARLY report snapshot. Upserts by (type, year, month) so it never duplicates. */
+  async snapshotNow(
+    type: 'MONTHLY' | 'YEARLY',
+    ethiopianYear: number,
+    month?: number,
+    generatedById?: string,
+  ) {
+    const report =
+      type === 'MONTHLY'
+        ? await this.monthlyReport(ethiopianYear, month ?? toEthiopian(new Date()).month)
+        : await this.yearlyReport(ethiopianYear);
+
+    const data = this.serialize(report);
+    const summary = {
+      totalIncome: round2(Number(report.summary.totalIncome)),
+      totalExpense: round2(Number(report.summary.totalExpense)),
+      net: round2(Number(report.summary.net)),
+      incomeCount: report.summary.incomeCount,
+      expenseCount: report.summary.expenseCount,
+    };
+
+    if (type === 'MONTHLY') {
+      const monthOrder = month ?? toEthiopian(new Date()).month;
+      const monthEnum = ETHIOPIAN_MONTHS.find((m) => m.order === monthOrder)?.value;
+      if (!monthEnum) throw new NotFoundException('Invalid Ethiopian month');
+      const saved = await this.prisma.financeReport.upsert({
+        where: {
+          type_ethiopianYear_month: {
+            type,
+            ethiopianYear,
+            month: monthEnum,
+          },
+        },
+        update: { summary, data, generatedById },
+        create: {
+          type,
+          ethiopianYear,
+          month: monthEnum,
+          summary,
+          data,
+          generatedById,
+        },
+      });
+      return { ...saved, data, summary };
+    }
+
+    const existing = await this.prisma.financeReport.findFirst({
+      where: { type: 'YEARLY', ethiopianYear, month: null },
+    });
+    const saved = existing
+      ? await this.prisma.financeReport.update({ where: { id: existing.id }, data: { summary, data, generatedById } })
+      : await this.prisma.financeReport.create({
+          data: { type, ethiopianYear, month: null, summary, data, generatedById },
+        });
+    return { ...saved, data, summary };
+  }
+
+  /** Called by the daily scheduler — auto-snapshots at the end of each Ethiopian month/year. */
+  async generateCurrentSnapshots(generatedById?: string) {
+    const now = new Date();
+    const { year, month } = toEthiopian(now);
+    const saved: Array<{ type: 'MONTHLY' | 'YEARLY'; ethiopianYear: number; month?: number }> = [];
+
+    if (isLastDayOfEthiopianMonth(now)) {
+      await this.snapshotNow('MONTHLY', year, month, generatedById);
+      saved.push({ type: 'MONTHLY', ethiopianYear: year, month });
+    }
+    if (isLastDayOfEthiopianYear(now)) {
+      await this.snapshotNow('YEARLY', year, undefined, generatedById);
+      saved.push({ type: 'YEARLY', ethiopianYear: year });
+    }
+    return saved;
+  }
+
+  /** Summaries of every saved report snapshot, newest first. */
+  listReportHistory() {
+    return this.prisma.financeReport.findMany({
+      orderBy: [{ ethiopianYear: 'desc' }, { month: 'desc' }],
+      select: {
+        id: true,
+        type: true,
+        ethiopianYear: true,
+        month: true,
+        summary: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async getReportSnapshot(id: string) {
+    const snapshot = await this.prisma.financeReport.findUnique({ where: { id } });
+    if (!snapshot) throw new NotFoundException('Report snapshot not found');
+    return snapshot;
+  }
+
+  async removeReportSnapshot(id: string) {
+    const snapshot = await this.prisma.financeReport.findUnique({ where: { id } });
+    if (!snapshot) throw new NotFoundException('Report snapshot not found');
+    await this.prisma.financeReport.delete({ where: { id } });
+    return { success: true };
   }
 }

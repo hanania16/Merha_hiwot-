@@ -14,6 +14,7 @@ const DICTIONARY: Record<string, { en: string; am: string }> = {
   reports: { en: 'Reports', am: 'ሪፖርቶች' },
   finance: { en: 'Finance', am: 'ፋይናንስ' },
   studentFees: { en: 'Student Fees', am: 'የተማሪ ክፍያ' },
+  bankAccounts: { en: 'Bank Accounts', am: 'የባንክ ሂሳቦች' },
   income: { en: 'Income', am: 'ገቢ' },
   expenses: { en: 'Expenses', am: 'ወጪ' },
   receipts: { en: 'Receipts', am: 'ደረሰኞች' },

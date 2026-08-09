@@ -9,10 +9,11 @@ import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
 
 const CATEGORIES = ['STUDENT_FEES', 'DONATIONS', 'DEVELOPMENT_DEPART', 'OTHERS'];
 const PAYMENT_METHODS = ['CASH', 'BANK_TRANSFER', 'MOBILE_MONEY', 'CHEQUE'];
-const INCOME_SOURCES = ['STUDENT_FEE', 'DONATION', 'CHURCH_CONTRIBUTION', 'FUNDRAISING', 'SPECIAL_OFFERING', 'OTHER'];
+// Student fees are recorded automatically on the 26th of each Ethiopian month,
+// so the manual Student Fee source type is intentionally not offered here.
+const INCOME_SOURCES = ['DONATION', 'CHURCH_CONTRIBUTION', 'FUNDRAISING', 'SPECIAL_OFFERING', 'OTHER'];
 
 interface Account { id: string; name: string; type: string; }
-interface PaymentOption { id: string; label: string; }
 
 interface IncomeRow {
   id: string;
@@ -39,7 +40,7 @@ export default function IncomePage() {
 
   return (
     <div>
-      <Topbar title="Income Management" subtitle="Student fees, donations, development department, and other income" />
+      <Topbar title="Income Management" subtitle="Student fees (automatic), donations, development department, and other income" />
 
       <div className="flex justify-end mb-4">
         <button className="btn-gold" onClick={() => setOpen(true)}>+ Record Income</button>
@@ -48,7 +49,7 @@ export default function IncomePage() {
       <div className="card overflow-x-auto">
         <table className="table-base">
           <thead>
-            <tr><th>Date</th><th>Category</th><th>Description</th><th>Recorded By</th><th className="text-right">Amount</th></tr>
+            <tr><th>Date</th><th>Category</th><th>Description</th><th className="hidden md:table-cell">Recorded By</th><th className="text-right">Amount</th></tr>
           </thead>
           <tbody>
             {rows.map((r) => (
@@ -56,7 +57,7 @@ export default function IncomePage() {
                 <td>{formatEthiopianDateFromGregorian(new Date(r.date))}</td>
                 <td>{r.category.replace(/_/g, ' ')}</td>
                 <td>{r.description ?? '—'}</td>
-                <td>{r.recordedBy?.fullName}</td>
+                <td className="hidden md:table-cell">{r.recordedBy?.fullName}</td>
                 <td className="text-right text-status-present font-medium">{formatETB(Number(r.amount))}</td>
               </tr>
             ))}
@@ -82,35 +83,27 @@ function IncomeFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [accountId, setAccountId] = useState('');
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([]);
-  const [monthlyPaymentId, setMonthlyPaymentId] = useState('');
 
   useEffect(() => {
     api.get<Account[]>('/finance/accounts')
       .then((accs) => { setAccounts(accs); if (accs.length) setAccountId(accs[0].id); })
       .catch(() => {});
-    api.get<{ fullName: string; months: { id: string; month: string; ethiopianYear: number }[] }[]>('/finance/student-fees')
-      .then((rows) => {
-        const opts: PaymentOption[] = [];
-        for (const s of rows) for (const m of s.months ?? []) {
-          opts.push({ id: m.id, label: `${s.fullName} — ${m.month.replace(/_/g, ' ')} ${m.ethiopianYear}` });
-        }
-        setPaymentOptions(opts);
-      })
-      .catch(() => {});
   }, []);
 
   const othersValid = category !== 'OTHERS' || description.trim().split(/\s+/).length >= 3;
-  const canSave = !saving && !!amount && othersValid && !!paymentMethod && !!accountId
-    && (sourceType !== 'STUDENT_FEE' || !!monthlyPaymentId);
+  const canSave = !saving && !!amount && othersValid && !!paymentMethod && !!accountId;
 
   async function submit() {
     setSaving(true);
     try {
       await api.post('/finance/income', {
-        date, amount: Number(amount), category, description,
-        sourceType, paymentMethod, accountId,
-        ...(sourceType === 'STUDENT_FEE' ? { monthlyPaymentId } : {}),
+        date,
+        amount: Number(amount),
+        category,
+        description,
+        sourceType,
+        paymentMethod,
+        accountId,
       });
       onSaved();
     } finally {
@@ -133,22 +126,11 @@ function IncomeFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
         </div>
         <div>
           <label className="label">Source Type</label>
-          <select className="input" value={sourceType} onChange={(e) => { setSourceType(e.target.value); setMonthlyPaymentId(''); }}>
+          <select className="input" value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
             {INCOME_SOURCES.map((s) => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
           </select>
+          <p className="text-xs text-slate mt-1">Student fees are recorded automatically on the 26th of each Ethiopian month.</p>
         </div>
-        {sourceType === 'STUDENT_FEE' && (
-          <div>
-            <label className="label">Student Monthly Payment</label>
-            <select className="input" value={monthlyPaymentId} onChange={(e) => setMonthlyPaymentId(e.target.value)}>
-              <option value="">Select a payment…</option>
-              {paymentOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-            </select>
-            {paymentOptions.length === 0 && (
-              <p className="text-xs text-red-500">No student payments available yet.</p>
-            )}
-          </div>
-        )}
         <div>
           <label className="label">Payment Method</label>
           <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>

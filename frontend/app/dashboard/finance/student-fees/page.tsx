@@ -33,13 +33,11 @@ interface FeeRow {
   lastPaidMonth: string | null;
   lastPaidYear: number | null;
   monthlyBaseFee: number;
-  currentMonthPenalty: number;
   outstandingBalance: number;
   months: { month: string; status: string }[];
   selectedMonth: SelectedMonthRecord | null;
 }
 interface ClassGroup { id: string; name: string; }
-interface GenerateResult { created: number; month: string; }
 
 const num = (v: number | string | null | undefined) => Number(v ?? 0);
 
@@ -54,8 +52,6 @@ export default function StudentFeesPage() {
   const [status, setStatus] = useState('');
   const [month, setMonth] = useState<string>(defaultMonth);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [notice, setNotice] = useState('');
   const [modalStudent, setModalStudent] = useState<FeeRow | null>(null);
 
   async function load() {
@@ -73,25 +69,9 @@ export default function StudentFeesPage() {
   useEffect(() => { api.get<ClassGroup[]>('/students/classes').then(setClasses); }, []);
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [classId, status, month]);
 
-  async function generateMonth() {
-    if (!month || generating) return;
-    setGenerating(true);
-    setNotice('');
-    try {
-      const res = await api.post<GenerateResult>('/finance/student-fees/generate-month', {
-        month,
-        ethiopianYear: currentEthiopianYear(),
-      });
-      setNotice(`Fee records for ${monthLabel(month)} generated — ${res.created} created.`);
-      await load();
-    } finally {
-      setGenerating(false);
-    }
-  }
-
   return (
     <div>
-      <Topbar title="Student Fee Management" subtitle="Fees follow class rules — 20 Birr (1-3), 30 Birr (4-6), 50 Birr (7-12), or 2% of salary for working members. 10-day grace, then a late penalty." />
+      <Topbar title="Student Fee Management" subtitle="Fees follow class rules — 20 Birr (1-3), 30 Birr (4-6), 50 Birr (7-12), or 2% of salary for working members. Tracking starts at Nehase 2018 — no late penalties." />
 
       <div className="card p-4 mb-6">
         <div className="flex flex-wrap gap-3 items-end">
@@ -103,9 +83,6 @@ export default function StudentFeesPage() {
               ))}
             </select>
           </div>
-          <button className="btn-gold" disabled={generating} onClick={generateMonth}>
-            {generating ? 'Generating…' : `Auto-generate fees — ${month ? monthLabel(month) : ''}`}
-          </button>
           <div className="flex-1 min-w-[200px]">
             <label className="label">Search</label>
             <input className="input" placeholder="Name, ID, parent…" value={search}
@@ -129,7 +106,6 @@ export default function StudentFeesPage() {
           </div>
           <button className="btn-outline" onClick={load}>Search</button>
         </div>
-        {notice && <p className="text-sm text-status-present mt-3">{notice}</p>}
       </div>
 
       <div className="card overflow-x-auto">
@@ -138,10 +114,10 @@ export default function StudentFeesPage() {
             <tr>
               <th>Student</th>
               <th>Status</th>
-              <th>Unpaid Months</th>
+              <th className="hidden sm:table-cell">Unpaid Months</th>
               <th>Outstanding</th>
               <th>{month ? `${monthLabel(month)} fee` : 'Month fee'}</th>
-              <th>Last Paid</th>
+              <th className="hidden md:table-cell">Last Paid</th>
               <th></th>
             </tr>
           </thead>
@@ -155,27 +131,22 @@ export default function StudentFeesPage() {
                     <p className="text-xs text-slate font-mono font-normal">{r.studentCode} · {r.className}{r.isWorkingMember ? ' · Working Member' : ''}</p>
                   </td>
                   <td><Badge variant={r.status === 'PAID' ? 'paid' : r.status === 'PARTIAL' ? 'partial' : 'unpaid'}>{r.status}</Badge></td>
-                  <td>{r.unpaidMonths}</td>
+                  <td className="hidden sm:table-cell">{r.unpaidMonths}</td>
                   <td className={r.outstandingBalance > 0 ? 'text-status-absent font-medium' : 'text-status-present'}>
                     {formatETB(r.outstandingBalance)}
-                    {r.currentMonthPenalty > 0 && <span className="text-[10px] text-status-warning block">+{formatETB(r.currentMonthPenalty)} late fee</span>}
                   </td>
                   <td>
                     {sel ? (
                       <div>
                         <Badge variant={sel.status === 'PAID' ? 'paid' : 'unpaid'}>{sel.status}</Badge>
                         <p className="text-sm text-ink font-medium mt-1">{formatETB(num(sel.amount))}</p>
-                        {num(sel.penaltyAmount) > 0 ? (
-                          <p className="text-[10px] text-status-warning">{formatETB(num(sel.baseAmount))} + {formatETB(num(sel.penaltyAmount))} penalty</p>
-                        ) : (
-                          <p className="text-[10px] text-slate">{formatETB(num(sel.baseAmount))}</p>
-                        )}
+                        <p className="text-[10px] text-slate">{formatETB(num(sel.baseAmount))}</p>
                       </div>
                     ) : (
                       <span className="text-xs text-slate">Not generated</span>
                     )}
                   </td>
-                  <td>{r.lastPaymentDate ? formatEthiopianDateFromGregorian(new Date(r.lastPaymentDate)) : '—'}</td>
+                  <td className="hidden md:table-cell">{r.lastPaymentDate ? formatEthiopianDateFromGregorian(new Date(r.lastPaymentDate)) : '—'}</td>
                   <td>
                     <button className="text-xs text-gold font-medium hover:underline" onClick={() => setModalStudent(r)}>
                       Record Payment
@@ -205,7 +176,6 @@ export default function StudentFeesPage() {
 interface Balance {
   monthlyBaseFee: number;
   currentMonthBase: number;
-  currentMonthPenalty: number;
   previousUnpaidMonths: number;
   previousUnpaidTotal: number;
   totalDue: number;
@@ -214,7 +184,6 @@ interface Balance {
 function RecordPaymentModal({ student, onClose, onSaved }: { student: FeeRow; onClose: () => void; onSaved: () => void }) {
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
   const [amount, setAmount] = useState(String(student.monthlyBaseFee));
-  const [includePenalty, setIncludePenalty] = useState(true);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [balance, setBalance] = useState<Balance | null>(null);
@@ -238,7 +207,6 @@ function RecordPaymentModal({ student, onClose, onSaved }: { student: FeeRow; on
         ethiopianYear: currentEthiopianYear(),
         months: selectedMonths,
         amountPerMonth: Number(amount),
-        includePenalty,
         notes,
       });
       onSaved();
@@ -253,7 +221,7 @@ function RecordPaymentModal({ student, onClose, onSaved }: { student: FeeRow; on
         <div className="card p-3 mb-4 bg-mist border-0">
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div><p className="text-slate">Previous unpaid months</p><p className="font-medium text-ink">{balance.previousUnpaidMonths} ({formatETB(balance.previousUnpaidTotal)})</p></div>
-            <div><p className="text-slate">Current month penalty</p><p className="font-medium text-status-warning">{formatETB(balance.currentMonthPenalty)}</p></div>
+            <div><p className="text-slate">Current month fee</p><p className="font-medium text-ink">{formatETB(balance.currentMonthBase)}</p></div>
           </div>
           <div className="mt-2 pt-2 border-t border-gray-200 flex justify-between">
             <span className="text-xs font-medium text-slate">Total Amount Due</span>
@@ -263,7 +231,7 @@ function RecordPaymentModal({ student, onClose, onSaved }: { student: FeeRow; on
       )}
 
       <p className="label mb-2">Select Ethiopian month(s) to mark as paid</p>
-      <div className="grid grid-cols-3 gap-2 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
         {ETHIOPIAN_MONTHS.map((m) => {
           const alreadyPaid = paidSet.has(m.value);
           return (
@@ -285,14 +253,27 @@ function RecordPaymentModal({ student, onClose, onSaved }: { student: FeeRow; on
         })}
       </div>
 
+      <div className="card p-3 mb-3 bg-mist border-0">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-slate">Monthly fee ({student.className})</p>
+            <p className="text-sm font-medium text-ink">{formatETB(Number(amount || 0))}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-slate">Months selected</p>
+            <p className="text-sm font-medium text-ink">{selectedMonths.length}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-slate">Total Amount</p>
+            <p className="text-base font-semibold text-gold">{formatETB(selectedMonths.length * Number(amount || 0))}</p>
+          </div>
+        </div>
+      </div>
+
       <div className="mb-3">
         <label className="label">Amount per month (ETB) — defaults to the class/working-member rule</label>
         <input className="input" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
       </div>
-      <label className="flex items-center gap-2 text-sm text-ink mb-3">
-        <input type="checkbox" checked={includePenalty} onChange={(e) => setIncludePenalty(e.target.checked)} />
-        Include late penalty ({formatETB(student.currentMonthPenalty)})
-      </label>
       <div className="mb-4">
         <label className="label">Notes (optional)</label>
         <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
@@ -301,7 +282,7 @@ function RecordPaymentModal({ student, onClose, onSaved }: { student: FeeRow; on
       <div className="flex justify-end gap-2">
         <button className="btn-outline" onClick={onClose}>Cancel</button>
         <button className="btn-gold" disabled={saving || selectedMonths.length === 0} onClick={submit}>
-          {saving ? 'Saving…' : `Save (${formatETB(selectedMonths.length * Number(amount || 0) + (includePenalty ? student.currentMonthPenalty : 0))})`}
+          {saving ? 'Saving…' : `Save (${formatETB(selectedMonths.length * Number(amount || 0))})`}
         </button>
       </div>
     </Modal>

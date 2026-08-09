@@ -40,7 +40,7 @@ export default function AttendanceAnalyticsPage() {
       <Topbar title="Attendance Analytics" subtitle="Trends, class breakdowns, and registration growth" />
 
       {buckets && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <div className="card p-4"><p className="text-xs text-slate uppercase">Absent 1-3 days</p><p className="text-xl font-semibold text-status-warning mt-1">{buckets.days1to3}</p></div>
           <div className="card p-4"><p className="text-xs text-slate uppercase">Absent 4-6 days</p><p className="text-xl font-semibold text-status-absent mt-1">{buckets.days4to6}</p></div>
           <div className="card p-4"><p className="text-xs text-slate uppercase">Absent 7-12 days</p><p className="text-xl font-semibold text-status-longabsence mt-1">{buckets.days7to12}</p></div>

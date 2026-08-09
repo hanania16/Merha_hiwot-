@@ -35,8 +35,8 @@ export default function InactiveStudentsPage() {
         <table className="table-base">
           <thead>
             <tr>
-              <th>Student ID</th><th>Name</th><th>Class</th><th>Consecutive Absences</th>
-              <th>Last Attendance</th><th>Marked Inactive</th><th>Reason</th>
+              <th>Student ID</th><th>Name</th><th className="hidden sm:table-cell">Class</th><th>Consecutive Absences</th>
+              <th className="hidden sm:table-cell">Last Attendance</th><th className="hidden md:table-cell">Marked Inactive</th><th className="hidden lg:table-cell">Reason</th>
             </tr>
           </thead>
           <tbody>
@@ -44,11 +44,11 @@ export default function InactiveStudentsPage() {
               <tr key={r.studentId} className="opacity-70">
                 <td className="font-mono text-xs">{r.studentCode}</td>
                 <td className="font-medium text-ink">{r.fullName}</td>
-                <td>{r.className}</td>
+                <td className="hidden sm:table-cell">{r.className}</td>
                 <td className="text-status-absent font-medium">{r.consecutiveAbsentDays ?? '—'}</td>
-                <td>{r.lastAttendanceDate ? formatEthiopianDateFromGregorian(new Date(r.lastAttendanceDate)) : '—'}</td>
-                <td>{r.dateMarkedInactive ? formatEthiopianDateFromGregorian(new Date(r.dateMarkedInactive)) : '—'}</td>
-                <td className="text-xs text-slate">{r.reason}</td>
+                <td className="hidden sm:table-cell">{r.lastAttendanceDate ? formatEthiopianDateFromGregorian(new Date(r.lastAttendanceDate)) : '—'}</td>
+                <td className="hidden md:table-cell">{r.dateMarkedInactive ? formatEthiopianDateFromGregorian(new Date(r.dateMarkedInactive)) : '—'}</td>
+                <td className="hidden lg:table-cell text-xs text-slate">{r.reason}</td>
               </tr>
             ))}
             {!loading && rows.length === 0 && (

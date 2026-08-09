@@ -73,10 +73,14 @@ export function EthiopianDatePicker({ value, onChange }: EthiopianDatePickerProp
     const spaceBelow = window.innerHeight - rect.bottom - 8;
     const spaceAbove = rect.top - 8;
     const dropdownH = 340;
+    const margin = 8;
+    const viewportW = window.innerWidth - margin * 2;
+    const width = Math.min(Math.max(rect.width, 280), viewportW);
+    const left = Math.min(Math.max(rect.left, margin), viewportW + margin - width);
     if (spaceBelow >= dropdownH || spaceBelow >= spaceAbove) {
-      setDropdownStyle({ position: 'fixed', top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 280) });
+      setDropdownStyle({ position: 'fixed', top: rect.bottom + 4, left, width });
     } else {
-      setDropdownStyle({ position: 'fixed', bottom: window.innerHeight - rect.top + 4, left: rect.left, width: Math.max(rect.width, 280) });
+      setDropdownStyle({ position: 'fixed', bottom: window.innerHeight - rect.top + 4, left, width });
     }
   }, [open]);
 

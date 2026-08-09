@@ -38,7 +38,7 @@ export default function AttendanceReportsPage() {
     <div>
       <Topbar title="Attendance Reports" subtitle="Daily, class, and registration reports with export" />
 
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         {(['daily', 'class', 'registration'] as const).map((t) => (
           <button
             key={t}
@@ -52,7 +52,7 @@ export default function AttendanceReportsPage() {
 
       {tab === 'daily' && (
         <>
-          <div className="card p-4 mb-6 flex items-end gap-3">
+          <div className="card p-4 mb-6 flex flex-wrap items-end gap-3">
             <div><label className="label">Date</label><EthiopianDatePicker value={date} onChange={(d) => setDate(d)} /></div>
             <button className="btn-outline" onClick={loadDaily}>Generate</button>
           </div>
@@ -60,11 +60,11 @@ export default function AttendanceReportsPage() {
             <div key={i} className="card p-6 mb-4">
               <h3 className="text-sm font-semibold text-ink mb-3">{event.title || event.eventType.replace(/_/g, ' ')}</h3>
               <table className="table-base">
-                <thead><tr><th>Student</th><th>Class</th><th>Status</th></tr></thead>
+                <thead><tr><th>Student</th><th className="hidden sm:table-cell">Class</th><th>Status</th></tr></thead>
                 <tbody>
                   {event.records.map((r: any, j: number) => (
                     <tr key={j}>
-                      <td>{r.studentName}</td><td>{r.className}</td>
+                      <td>{r.studentName}</td><td className="hidden sm:table-cell">{r.className}</td>
                       <td><Badge variant={r.status === 'PRESENT' ? 'paid' : r.status === 'PERMISSION' ? 'partial' : 'unpaid'}>{r.status}</Badge></td>
                     </tr>
                   ))}
@@ -78,7 +78,7 @@ export default function AttendanceReportsPage() {
 
       {tab === 'class' && (
         <>
-          <div className="card p-4 mb-6 flex items-end gap-3">
+          <div className="card p-4 mb-6 flex flex-wrap items-end gap-3">
             <div>
               <label className="label">Class</label>
               <select className="input" value={classId} onChange={(e) => setClassId(e.target.value)}>
@@ -108,7 +108,7 @@ export default function AttendanceReportsPage() {
 
       {tab === 'registration' && (
         <>
-          <div className="card p-4 mb-6 flex items-end gap-3">
+          <div className="card p-4 mb-6 flex flex-wrap items-end gap-3">
             <div><label className="label">From</label><EthiopianDatePicker value={from} onChange={(d) => setFrom(d)} /></div>
             <div><label className="label">To</label><EthiopianDatePicker value={to} onChange={(d) => setTo(d)} /></div>
             <button className="btn-outline" onClick={loadRegistration}>Generate</button>
@@ -116,12 +116,12 @@ export default function AttendanceReportsPage() {
           </div>
           <div className="card overflow-x-auto">
             <table className="table-base">
-              <thead><tr><th>Student</th><th>Class</th><th>Gender</th><th>Registration Date</th></tr></thead>
+              <thead><tr><th>Student</th><th className="hidden sm:table-cell">Class</th><th className="hidden sm:table-cell">Gender</th><th>Registration Date</th></tr></thead>
               <tbody>
                 {regData.map((r: any, i: number) => (
                   <tr key={i}>
                     <td className="font-medium text-ink">{r.fullName}</td>
-                    <td>{r.className}</td><td>{r.gender}</td>
+                    <td className="hidden sm:table-cell">{r.className}</td><td className="hidden sm:table-cell">{r.gender}</td>
                     <td>{formatEthiopianDateFromGregorian(new Date(r.registrationDate))}</td>
                   </tr>
                 ))}

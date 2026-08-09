@@ -104,7 +104,7 @@ export default function StudentsPage() {
       <div className="card overflow-x-auto">
         <table className="table-base">
           <thead>
-            <tr><th>ID</th><th>Name</th><th>Age</th><th>Class</th><th>Parent</th><th>Status</th><th></th></tr>
+            <tr><th>ID</th><th>Name</th><th className="hidden sm:table-cell">Age</th><th className="hidden sm:table-cell">Class</th><th className="hidden md:table-cell">Parent</th><th>Status</th><th></th></tr>
           </thead>
           <tbody>
             {rows.map((s) => (
@@ -115,9 +115,9 @@ export default function StudentsPage() {
                   {s.isWorkingMember && <span className="ml-2 text-[10px] text-gold border border-gold rounded-full px-1.5 py-0.5">Working Member</span>}
                   {s.eligibility?.eligible && <span className="ml-1 text-[10px] text-green-700 bg-green-100 border border-green-300 rounded-full px-1.5 py-0.5">Eligible to Serve</span>}
                 </td>
-                <td>{s.age}</td>
-                <td>{s.class.name}</td>
-                <td><p>{s.parentName}</p><p className="text-xs text-slate">{s.parentPhone}</p></td>
+                <td className="hidden sm:table-cell">{s.age}</td>
+                <td className="hidden sm:table-cell">{s.class.name}</td>
+                <td className="hidden md:table-cell"><p>{s.parentName}</p><p className="text-xs text-slate">{s.parentPhone}</p></td>
                 <td><Badge variant={s.status === 'ACTIVE' ? 'paid' : 'neutral'}>{s.status}</Badge></td>
                 <td><Link className="text-xs text-gold font-medium hover:underline" href={`/dashboard/attendance/students/${s.id}`}>View Profile</Link></td>
               </tr>

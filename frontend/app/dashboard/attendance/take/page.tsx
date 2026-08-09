@@ -137,15 +137,15 @@ export default function TakeAttendancePage() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div className="flex flex-wrap gap-2">
           <button className="btn-outline text-xs" onClick={() => setAll('PRESENT')} disabled={isSaved && !editing}>Mark all Present</button>
           <button className="btn-outline text-xs" onClick={() => setAll('ABSENT')} disabled={isSaved && !editing}>Mark all Absent</button>
         </div>
         {isSaved && !editing ? (
           <button className="btn-gold" onClick={() => setEditing(true)}>Edit</button>
         ) : (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {isSaved && <button className="btn-outline" onClick={() => loadRoster()}>Cancel</button>}
             <button className="btn-gold" onClick={save} disabled={saving || roster.length === 0}>
               {saving ? 'Saving…' : 'Save Attendance'}
@@ -171,13 +171,13 @@ export default function TakeAttendancePage() {
                   <p className="text-xs text-slate font-normal font-mono">{r.studentCode}</p>
                 </td>
                 <td>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-1.5 sm:gap-2">
                     {(['PRESENT', 'ABSENT', 'LATE', 'PERMISSION'] as const).map((s) => (
                       <button
                         key={s}
                         disabled={isSaved && !editing}
                         onClick={() => setStatuses((prev) => ({ ...prev, [r.studentId]: s }))}
-                        className={`text-xs px-3 py-1.5 rounded-lg border ${
+                        className={`text-xs px-2 sm:px-3 py-1.5 rounded-lg border ${
                           statuses[r.studentId] === s ? STATUS_STYLES[s] : 'border-gray-200 text-slate hover:bg-mist'
                         } disabled:opacity-60 disabled:cursor-not-allowed`}
                       >

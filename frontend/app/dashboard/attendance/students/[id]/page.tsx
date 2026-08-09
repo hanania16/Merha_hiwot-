@@ -128,12 +128,12 @@ export default function StudentProfilePage() {
       <div className="card p-6">
         <h2 className="text-sm font-semibold text-ink mb-4">Attendance History</h2>
         <table className="table-base">
-          <thead><tr><th>Date</th><th>Event</th><th>Status</th></tr></thead>
+          <thead><tr><th>Date</th><th className="hidden sm:table-cell">Event</th><th>Status</th></tr></thead>
           <tbody>
             {profile.attendanceHistory.slice(0, 30).map((h, i) => (
               <tr key={i}>
                 <td>{formatEthiopianDateFromGregorian(new Date(h.date))}</td>
-                <td>{h.title || h.eventType.replace(/_/g, ' ')}</td>
+                <td className="hidden sm:table-cell">{h.title || h.eventType.replace(/_/g, ' ')}</td>
                 <td>
                   <Badge variant={h.status === 'PRESENT' ? 'paid' : h.status === 'PERMISSION' ? 'partial' : 'unpaid'}>
                     {h.status}

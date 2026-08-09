@@ -16,6 +16,11 @@ export class AccountsController {
     return this.accountsService.findAll();
   }
 
+  @Get(':id/statement')
+  getStatement(@Param('id') id: string) {
+    return this.accountsService.getStatement(id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.accountsService.findOne(id);

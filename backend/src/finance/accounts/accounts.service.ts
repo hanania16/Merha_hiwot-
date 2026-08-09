@@ -37,6 +37,76 @@ export class AccountsService {
     return { ...account, balance: await this.balanceFor(id) };
   }
 
+  /**
+   * Per-account statement: every approved income/expense for the account in
+   * chronological order with the running balance after each entry, so the
+   * balance can be audited against the actual bank activity.
+   */
+  async getStatement(id: string) {
+    const account = await this.prisma.account.findUnique({ where: { id } });
+    if (!account) throw new NotFoundException('Account not found');
+
+    const [incomes, expenses] = await Promise.all([
+      this.prisma.income.findMany({
+        where: { accountId: id, status: TransactionStatus.APPROVED },
+        select: {
+          id: true,
+          date: true,
+          amount: true,
+          category: true,
+          description: true,
+          referenceNumber: true,
+          paymentMethod: true,
+          createdAt: true,
+          recordedBy: { select: { fullName: true } },
+        },
+        orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+      }),
+      this.prisma.expense.findMany({
+        where: { accountId: id, status: TransactionStatus.APPROVED },
+        select: {
+          id: true,
+          date: true,
+          amount: true,
+          category: true,
+          description: true,
+          referenceNumber: true,
+          paymentMethod: true,
+          createdAt: true,
+          recordedBy: { select: { fullName: true } },
+        },
+        orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+      }),
+    ]);
+
+    const lines = [
+      ...incomes.map((i) => ({ ...i, type: 'INCOME' as const })),
+      ...expenses.map((e) => ({ ...e, type: 'EXPENSE' as const })),
+    ].sort(
+      (a, b) => a.date.getTime() - b.date.getTime() || a.createdAt.getTime() - b.createdAt.getTime(),
+    );
+
+    let running = 0;
+    const statement = lines.map((l) => {
+      const amount = Number(l.amount);
+      running += l.type === 'INCOME' ? amount : -amount;
+      return {
+        id: l.id,
+        type: l.type,
+        date: l.date,
+        category: l.category,
+        description: l.description,
+        referenceNumber: l.referenceNumber,
+        paymentMethod: l.paymentMethod,
+        recordedBy: l.recordedBy?.fullName ?? null,
+        amount,
+        runningBalance: running,
+      };
+    });
+
+    return { account, balance: running, statement };
+  }
+
   async create(dto: CreateAccountDto, userId: string) {
     const account = await this.prisma.account.create({ data: dto });
     await this.audit.log({

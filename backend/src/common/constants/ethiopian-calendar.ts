@@ -89,3 +89,17 @@ export function formatEthiopianDate(gregorian: Date): string {
 export function ethiopianDayOfMonth(date: Date): number {
   return toEthiopian(date).day;
 }
+
+/** True when `date` falls on the last day of its Ethiopian month (30th for months 1-12, last Pagume day for month 13). */
+export function isLastDayOfEthiopianMonth(date: Date): boolean {
+  const { month, day } = toEthiopian(date);
+  if (month <= 12) return day === 30;
+  const tomorrow = new Date(date.getTime() + 24 * 60 * 60 * 1000);
+  return toEthiopian(tomorrow).month === 1;
+}
+
+/** True when `date` falls on the last day of its Ethiopian year (last Pagume day). */
+export function isLastDayOfEthiopianYear(date: Date): boolean {
+  const { month } = toEthiopian(date);
+  return month === 13 && isLastDayOfEthiopianMonth(date);
+}

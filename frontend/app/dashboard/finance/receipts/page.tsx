@@ -144,7 +144,7 @@ export default function ReceiptsPage() {
         <table className="table-base">
           <thead>
             <tr>
-              <th>Receipt No</th><th>Student</th><th>Months</th><th>Amount</th><th>Date</th><th>Issued By</th><th></th>
+              <th>Receipt No</th><th>Student</th><th className="hidden sm:table-cell">Months</th><th>Amount</th><th className="hidden sm:table-cell">Date</th><th className="hidden lg:table-cell">Issued By</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -152,10 +152,10 @@ export default function ReceiptsPage() {
               <tr key={r.id}>
                 <td className="font-mono text-xs">{r.receiptNumber}</td>
                 <td className="font-medium text-ink">{r.student.fullName}</td>
-                <td>{r.monthsPaid.map(monthLabel).join(', ')}</td>
+                <td className="hidden sm:table-cell">{r.monthsPaid.map(monthLabel).join(', ')}</td>
                 <td>{formatETB(Number(r.amount))}</td>
-                <td>{formatEthiopianDateFromGregorian(new Date(r.paymentDate))}</td>
-                <td>{r.issuedBy.fullName}</td>
+                <td className="hidden sm:table-cell">{formatEthiopianDateFromGregorian(new Date(r.paymentDate))}</td>
+                <td className="hidden lg:table-cell">{r.issuedBy.fullName}</td>
                 <td>
                   <a className="text-xs text-gold font-medium hover:underline" href={downloadUrl(`/finance/receipts/${r.id}/print`)} target="_blank" rel="noreferrer">Print</a>
                 </td>

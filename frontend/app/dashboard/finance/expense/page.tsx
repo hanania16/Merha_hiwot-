@@ -50,7 +50,7 @@ export default function ExpensePage() {
       <div className="card overflow-x-auto">
         <table className="table-base">
           <thead>
-            <tr><th>Date</th><th>Category</th><th>Description</th><th>Recorded By</th><th>Approved By</th><th className="text-right">Amount</th></tr>
+            <tr><th>Date</th><th>Category</th><th>Description</th><th className="hidden md:table-cell">Recorded By</th><th className="hidden lg:table-cell">Approved By</th><th className="text-right">Amount</th></tr>
           </thead>
           <tbody>
             {rows.map((r) => (
@@ -58,8 +58,8 @@ export default function ExpensePage() {
                 <td>{formatEthiopianDateFromGregorian(new Date(r.date))}</td>
                 <td>{r.category.replace(/_/g, ' ')}</td>
                 <td>{r.description ?? '—'}</td>
-                <td>{r.recordedBy?.fullName}</td>
-                <td>{r.approvedBy?.fullName ?? '—'}</td>
+                <td className="hidden md:table-cell">{r.recordedBy?.fullName}</td>
+                <td className="hidden lg:table-cell">{r.approvedBy?.fullName ?? '—'}</td>
                 <td className="text-right text-status-absent font-medium">{formatETB(Number(r.amount))}</td>
               </tr>
             ))}

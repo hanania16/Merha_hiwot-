@@ -1,4 +1,4 @@
-import { ArrayMinSize, IsArray, IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { ArrayMinSize, IsArray, IsEnum, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { EthiopianMonth } from '@prisma/client';
 
 export class RecordPaymentDto {
@@ -18,11 +18,6 @@ export class RecordPaymentDto {
   @IsNumber()
   @Min(0)
   amountPerMonth?: number;
-
-  /** Whether to add the late penalty (after the 10-day grace) to this payment. */
-  @IsOptional()
-  @IsBoolean()
-  includePenalty?: boolean;
 
   @IsOptional()
   @IsString()

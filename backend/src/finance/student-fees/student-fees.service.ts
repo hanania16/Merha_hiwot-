@@ -1,14 +1,25 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { EthiopianMonth, PaymentStatus } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { EthiopianMonth, PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
-import { ETHIOPIAN_MONTHS, currentEthiopianYear, toEthiopian } from '../../common/constants/ethiopian-calendar';
-import { LATE_PENALTY_CAP, baseFeeFor, latePenaltyFor, latePenaltyForMonth } from '../../common/constants/fee-rules';
+import { ETHIOPIAN_MONTHS, currentEthiopianYear, monthLabel } from '../../common/constants/ethiopian-calendar';
+import {
+  FEE_TRACKING_START_YEAR,
+  baseFeeFor,
+  feeMonthsElapsed,
+  isWithinFeeTrackingWindow,
+} from '../../common/constants/fee-rules';
 import { RecordPaymentDto } from './dto/record-payment.dto';
+import { RecordClassPaymentsDto } from './dto/record-class-payments.dto';
 import { QueryFeesDto } from './dto/query-fees.dto';
 
 const monthOrder = (month: EthiopianMonth) =>
   ETHIOPIAN_MONTHS.find((m) => m.value === month)?.order ?? 1;
+
+/** Paid months that fall inside the fee tracking window (Nehase 2018 onward). */
+const countPaidInWindow = (
+  payments: { status: PaymentStatus; ethiopianYear: number; month: EthiopianMonth }[],
+) => payments.filter((p) => p.status === 'PAID' && isWithinFeeTrackingWindow(p.ethiopianYear, monthOrder(p.month))).length;
 
 @Injectable()
 export class StudentFeesService {
@@ -17,6 +28,7 @@ export class StudentFeesService {
   /**
    * Finance never creates students — it imports the active roster maintained
    * by the Attendance dashboard and overlays payment status per Ethiopian month.
+   * Fee tracking starts at Nehase 2018; months before it are never charged.
    */
   async listStudentFeeStatus(query: QueryFeesDto, ethiopianYear = currentEthiopianYear()) {
     const students = await this.prisma.student.findMany({
@@ -32,28 +44,27 @@ export class StudentFeesService {
             ]
           : undefined,
       },
-      include: { class: true, monthlyPayments: { where: { ethiopianYear } } },
+      include: { class: true, monthlyPayments: { where: { ethiopianYear: { gte: FEE_TRACKING_START_YEAR } } } },
       orderBy: { fullName: 'asc' },
     });
 
-    const totalMonths = ETHIOPIAN_MONTHS.length;
+    const elapsed = feeMonthsElapsed();
 
     const mapped = students.map((s) => {
-      const paidMonths = s.monthlyPayments.filter((p) => p.status === 'PAID');
-      const unpaidCount = totalMonths - paidMonths.length;
-      const lastPaid = paidMonths.sort(
-        (a, b) => (b.paidDate?.getTime() ?? 0) - (a.paidDate?.getTime() ?? 0),
-      )[0];
+      const paidCount = countPaidInWindow(s.monthlyPayments);
+      const unpaidCount = Math.max(elapsed - paidCount, 0);
+      const lastPaid = s.monthlyPayments
+        .filter((p) => p.status === 'PAID')
+        .sort((a, b) => (b.paidDate?.getTime() ?? 0) - (a.paidDate?.getTime() ?? 0))[0];
 
       const overallStatus =
-        paidMonths.length === totalMonths ? 'PAID' : paidMonths.length === 0 ? 'UNPAID' : 'PARTIAL';
+        paidCount === 0 ? 'UNPAID' : paidCount >= elapsed ? 'PAID' : 'PARTIAL';
 
       const base = baseFeeFor({
         classLevel: s.class.level,
         isWorkingMember: s.isWorkingMember,
         monthlySalary: s.monthlySalary ? Number(s.monthlySalary) : null,
       });
-      const penalty = overallStatus !== 'PAID' ? latePenaltyFor(s.class.level) : 0;
       const selectedMonth = query.month
         ? s.monthlyPayments.find((p) => p.month === query.month) ?? null
         : null;
@@ -72,10 +83,9 @@ export class StudentFeesService {
         unpaidMonths: unpaidCount,
         lastPaymentDate: lastPaid?.paidDate ?? null,
         lastPaidMonth: lastPaid?.month ?? null,
-        lastPaidYear: lastPaid ? ethiopianYear : null,
+        lastPaidYear: lastPaid ? lastPaid.ethiopianYear : null,
         monthlyBaseFee: base,
-        currentMonthPenalty: penalty,
-        outstandingBalance: unpaidCount > 0 ? Math.round((unpaidCount * base + penalty) * 100) / 100 : 0,
+        outstandingBalance: Math.round(unpaidCount * base * 100) / 100,
         months: s.monthlyPayments,
         selectedMonth,
       };
@@ -97,7 +107,7 @@ export class StudentFeesService {
   async getOutstandingBalance(studentId: string, ethiopianYear = currentEthiopianYear()) {
     const student = await this.prisma.student.findUnique({
       where: { id: studentId },
-      include: { class: true, monthlyPayments: { where: { ethiopianYear } } },
+      include: { class: true, monthlyPayments: { where: { ethiopianYear: { gte: FEE_TRACKING_START_YEAR } } } },
     });
     if (!student) throw new NotFoundException('Student not found');
 
@@ -107,19 +117,18 @@ export class StudentFeesService {
       monthlySalary: student.monthlySalary ? Number(student.monthlySalary) : null,
     });
 
-    const paidMonths = student.monthlyPayments.filter((p) => p.status === 'PAID');
-    const unpaidMonthCount = ETHIOPIAN_MONTHS.length - paidMonths.length;
-    const currentMonthPenalty = unpaidMonthCount > 0 ? latePenaltyFor(student.class.level) : 0;
-    const previousUnpaidMonths = Math.max(unpaidMonthCount - 1, 0);
+    const elapsed = feeMonthsElapsed();
+    const paidCount = countPaidInWindow(student.monthlyPayments);
+    const unpaidCount = Math.max(elapsed - paidCount, 0);
+    const previousUnpaidMonths = Math.max(unpaidCount - 1, 0);
     const previousUnpaidTotal = Math.round(previousUnpaidMonths * base * 100) / 100;
-    const currentMonthBase = unpaidMonthCount > 0 ? base : 0;
-    const totalDue = Math.round((currentMonthBase + currentMonthPenalty + previousUnpaidTotal) * 100) / 100;
+    const currentMonthBase = unpaidCount > 0 ? base : 0;
+    const totalDue = Math.round((currentMonthBase + previousUnpaidTotal) * 100) / 100;
 
     return {
       studentId,
       monthlyBaseFee: base,
       currentMonthBase,
-      currentMonthPenalty,
       previousUnpaidMonths,
       previousUnpaidTotal,
       totalDue,
@@ -127,7 +136,7 @@ export class StudentFeesService {
     };
   }
 
-  /** Records payment for one or more Ethiopian months; idempotent upsert per month. Applies fee rules automatically. */
+  /** Records payment for one or more Ethiopian months; idempotent upsert per month. No automatic penalties. */
   async recordPayment(dto: RecordPaymentDto, userId: string) {
     const student = await this.prisma.student.findUnique({ where: { id: dto.studentId }, include: { class: true } });
     if (!student) throw new NotFoundException('Student not found');
@@ -141,113 +150,186 @@ export class StudentFeesService {
 
     const results = [];
     for (const month of dto.months) {
-      const penalty = dto.includePenalty
-        ? latePenaltyForMonth(student.class.level, dto.ethiopianYear, monthOrder(month))
-        : 0;
-      const total = Math.round((amountPerMonth + penalty) * 100) / 100;
-      const existing = await this.prisma.monthlyPayment.findUnique({
-        where: { studentId_ethiopianYear_month: { studentId: dto.studentId, ethiopianYear: dto.ethiopianYear, month } },
-      });
-
-      const payment = await this.prisma.monthlyPayment.upsert({
-        where: { studentId_ethiopianYear_month: { studentId: dto.studentId, ethiopianYear: dto.ethiopianYear, month } },
-        update: {
-          status: 'PAID',
-          baseAmount: amountPerMonth,
-          penaltyAmount: penalty,
-          amount: total,
-          notes: dto.notes,
-          paidDate: new Date(),
-          recordedById: userId,
-        },
-        create: {
-          studentId: dto.studentId,
-          ethiopianYear: dto.ethiopianYear,
-          month,
-          status: 'PAID',
-          baseAmount: amountPerMonth,
-          penaltyAmount: penalty,
-          amount: total,
-          notes: dto.notes,
-          paidDate: new Date(),
-          recordedById: userId,
-        },
-      });
-
-      await this.audit.log({
+      const total = Math.round(amountPerMonth * 100) / 100;
+      const { payment } = await this.upsertPayment(this.prisma.monthlyPayment, {
+        studentId: dto.studentId,
+        ethiopianYear: dto.ethiopianYear,
+        month,
+        amount: total,
+        notes: dto.notes,
         userId,
-        action: existing ? 'PAYMENT_UPDATED' : 'PAYMENT_RECORDED',
-        entityType: 'MonthlyPayment',
-        entityId: payment.id,
-        oldValue: existing,
-        newValue: payment,
       });
-
       results.push(payment);
     }
     return results;
   }
 
-  /** Auto-creates an unpaid fee record for every active student for the given Ethiopian month. */
-  async generateMonthlyFees(ethiopianYear: number, month: EthiopianMonth, userId: string) {
-    const students = await this.prisma.student.findMany({
-      where: { status: 'ACTIVE' },
-      include: { class: true },
+  /**
+   * Single write path for "a student has paid a month" — idempotent upsert plus
+   * the PAYMENT_RECORDED / PAYMENT_UPDATED audit log. Shared by single-student
+   * and whole-class bulk recording so both produce identical rows and audits.
+   * `newlyPaid` is true when the record did not already have PAID status (a new
+   * row or an UNPAID→PAID transition) — callers use it to avoid re-deriving
+   * ledger income on idempotent re-runs.
+   */
+  private async upsertPayment(
+    monthlyPayment: Prisma.MonthlyPaymentDelegate,
+    args: { studentId: string; ethiopianYear: number; month: EthiopianMonth; amount: number; notes?: string; userId: string },
+  ): Promise<{ payment: Prisma.MonthlyPaymentGetPayload<{}>; newlyPaid: boolean }> {
+    const existing = await monthlyPayment.findUnique({
+      where: {
+        studentId_ethiopianYear_month: {
+          studentId: args.studentId,
+          ethiopianYear: args.ethiopianYear,
+          month: args.month,
+        },
+      },
     });
 
-    const today = toEthiopian(new Date());
-    const records = students.map((student) => {
-      const isWorkingMember = student.isWorkingMember;
-      const base = baseFeeFor({
-        classLevel: student.class.level,
-        isWorkingMember,
-        monthlySalary: student.monthlySalary ? Number(student.monthlySalary) : null,
-      });
-      const penalty =
-        ethiopianYear < today.year || (ethiopianYear === today.year && monthOrder(month) < today.month)
-          ? LATE_PENALTY_CAP[student.class.level]
-          : 0;
-      return {
-        studentId: student.id,
-        ethiopianYear,
-        month,
-        status: 'UNPAID' as PaymentStatus,
-        baseAmount: base,
-        penaltyAmount: penalty,
-        amount: Math.round((base + penalty) * 100) / 100,
-        recordedById: userId,
-      };
-    });
-
-    const result = await this.prisma.monthlyPayment.createMany({
-      data: records,
-      skipDuplicates: true,
+    const payment = await monthlyPayment.upsert({
+      where: {
+        studentId_ethiopianYear_month: {
+          studentId: args.studentId,
+          ethiopianYear: args.ethiopianYear,
+          month: args.month,
+        },
+      },
+      update: {
+        status: 'PAID',
+        baseAmount: args.amount,
+        penaltyAmount: 0,
+        amount: args.amount,
+        notes: args.notes,
+        paidDate: new Date(),
+        recordedById: args.userId,
+      },
+      create: {
+        studentId: args.studentId,
+        ethiopianYear: args.ethiopianYear,
+        month: args.month,
+        status: 'PAID',
+        baseAmount: args.amount,
+        penaltyAmount: 0,
+        amount: args.amount,
+        notes: args.notes,
+        paidDate: new Date(),
+        recordedById: args.userId,
+      },
     });
 
     await this.audit.log({
-      userId,
-      action: 'MONTHLY_FEES_GENERATED',
+      userId: args.userId,
+      action: existing ? 'PAYMENT_UPDATED' : 'PAYMENT_RECORDED',
       entityType: 'MonthlyPayment',
-      entityId: `${ethiopianYear}-${month}`,
-      oldValue: { ethiopianYear, month },
-      newValue: { count: result.count },
+      entityId: payment.id,
+      oldValue: existing,
+      newValue: payment,
     });
 
-    return { generated: result.count, month, ethiopianYear };
+    return { payment, newlyPaid: !existing || existing.status !== 'PAID' };
+  }
+
+  /**
+   * Whole-class bulk recording. Applies the class fee rule per student (or an
+   * optional per-student override) for the selected months, reusing the exact
+   * same upsert+audit path as single-student recording. The whole batch runs in
+   * one DB transaction; one derived STUDENT_FEES income record is created per
+   * month so the ledger/reports reflect the collected fees.
+   */
+  async recordClassPayments(dto: RecordClassPaymentsDto, userId: string) {
+    const students = await this.prisma.student.findMany({
+      where: { status: 'ACTIVE', class: { level: dto.classLevel } },
+      include: { class: true },
+    });
+    if (students.length === 0) {
+      throw new BadRequestException('No active students found in this class level');
+    }
+
+    const date = dto.date ? new Date(dto.date) : new Date();
+    const levelLabel = dto.classLevel.replace('CLASS_', '').replace('_', '-');
+
+    return this.prisma.$transaction(async (tx) => {
+      const monthResults = [];
+
+      for (const month of dto.months) {
+        const paymentIds: string[] = [];
+        let monthTotal = 0;
+        let newlyPaid = false;
+
+        for (const s of students) {
+          const defaultAmount = baseFeeFor({
+            classLevel: s.class.level,
+            isWorkingMember: s.isWorkingMember,
+            monthlySalary: s.monthlySalary ? Number(s.monthlySalary) : null,
+          });
+          const amount =
+            dto.amountOverrides && dto.amountOverrides[s.id] != null
+              ? Math.round(Number(dto.amountOverrides[s.id]) * 100) / 100
+              : Math.round(defaultAmount * 100) / 100;
+
+          monthTotal += amount;
+          const { payment, newlyPaid: np } = await this.upsertPayment(tx.monthlyPayment, {
+            studentId: s.id,
+            ethiopianYear: dto.ethiopianYear,
+            month,
+            amount,
+            notes: dto.notes,
+            userId,
+          });
+          if (np) newlyPaid = true;
+          paymentIds.push(payment.id);
+        }
+
+        const total = Math.round(monthTotal * 100) / 100;
+
+        // Idempotent re-runs (everything already PAID) must not create duplicate
+        // ledger income — only derive an income row when something was newly paid.
+        let income = null;
+        if (newlyPaid) {
+          income = await tx.income.create({
+            data: {
+              date,
+              amount: total,
+              category: 'STUDENT_FEES',
+              sourceType: 'STUDENT_FEE',
+              paymentMethod: dto.paymentMethod ?? 'CASH',
+              description:
+                dto.description ??
+                `Class ${levelLabel} fee — ${monthLabel(month)} ${dto.ethiopianYear} (${students.length} students)`,
+              accountId: dto.accountId,
+              recordedById: userId,
+            },
+          });
+        }
+
+        monthResults.push({
+          month,
+          classLevel: dto.classLevel,
+          studentCount: students.length,
+          amount: total,
+          incomeId: income?.id ?? null,
+          incomeCreated: income !== null,
+          paymentCount: paymentIds.length,
+        });
+      }
+
+      return monthResults;
+    });
   }
 
   /** Students who haven't paid the current Ethiopian month — used by both the Finance reminder and the Attendance "fee reminder" section. */
   async getUnpaidThisMonth(ethiopianYear = currentEthiopianYear(), currentMonth?: string) {
     const students = await this.prisma.student.findMany({
       where: { status: 'ACTIVE' },
-      include: { class: true, monthlyPayments: { where: { ethiopianYear } } },
+      include: { class: true, monthlyPayments: { where: { ethiopianYear: { gte: FEE_TRACKING_START_YEAR } } } },
     });
+
+    const elapsed = feeMonthsElapsed();
 
     return students
       .filter((s) => {
         if (!currentMonth) {
-          const paidCount = s.monthlyPayments.filter((p) => p.status === 'PAID').length;
-          return paidCount < ETHIOPIAN_MONTHS.length;
+          return countPaidInWindow(s.monthlyPayments) < elapsed;
         }
         const thisMonthPaid = s.monthlyPayments.some((p) => p.month === currentMonth && p.status === 'PAID');
         return !thisMonthPaid;

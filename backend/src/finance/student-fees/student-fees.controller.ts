@@ -1,12 +1,11 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { StudentFeesService } from './student-fees.service';
 import { RecordPaymentDto } from './dto/record-payment.dto';
+import { RecordClassPaymentsDto } from './dto/record-class-payments.dto';
 import { QueryFeesDto } from './dto/query-fees.dto';
-import { GenerateMonthFeesDto } from './dto/generate-month.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Role } from '@prisma/client';
-import { currentEthiopianYear } from '../../common/constants/ethiopian-calendar';
 
 @Controller('finance/student-fees')
 export class StudentFeesController {
@@ -41,8 +40,8 @@ export class StudentFeesController {
   }
 
   @Roles(Role.FINANCE_OFFICER, Role.ADMINISTRATOR)
-  @Post('generate-month')
-  generateMonth(@Body() dto: GenerateMonthFeesDto, @CurrentUser() user: CurrentUserPayload) {
-    return this.feesService.generateMonthlyFees(dto.ethiopianYear ?? currentEthiopianYear(), dto.month, user.userId);
+  @Post('record-class')
+  recordClass(@Body() dto: RecordClassPaymentsDto, @CurrentUser() user: CurrentUserPayload) {
+    return this.feesService.recordClassPayments(dto, user.userId);
   }
 }

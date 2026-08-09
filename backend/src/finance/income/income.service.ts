@@ -3,6 +3,8 @@ import { ApprovalDecision, IncomeSourceType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { FinanceAuditService } from '../../services/financeAuditService';
+import { baseFeeFor } from '../../common/constants/fee-rules';
+import { ETHIOPIAN_MONTHS, monthLabel } from '../../common/constants/ethiopian-calendar';
 import { CreateIncomeDto } from './dto/create-income.dto';
 import { UpdateIncomeDto } from './dto/update-income.dto';
 import { ApproveTransactionDto } from './dto/approve-transaction.dto';
@@ -84,6 +86,96 @@ export class IncomeService {
     });
 
     return income;
+  }
+
+  /**
+   * Automatic monthly student-fee income. On the 26th of every Ethiopian month
+   * the scheduler calls this for the current month. It creates ONE income record
+   * per class level (amount = sum of each active student's monthly fee — 20/30/50
+   * for regular students, 2% of salary for working members). It does NOT touch
+   * per-student paid status. Idempotent: a marker in referenceNumber prevents a
+   * month from ever being recorded twice.
+   */
+  async autoRecordMonthlyFees(year: number, monthOrder: number, userId?: string) {
+    const monthEnum = ETHIOPIAN_MONTHS.find((m) => m.order === monthOrder)?.value;
+    if (!monthEnum) throw new BadRequestException('Invalid Ethiopian month');
+
+    const marker = `AUTO:STUDENT_FEES:${year}:${monthOrder}`;
+    const existing = await this.prisma.income.findFirst({
+      where: { sourceType: IncomeSourceType.STUDENT_FEE, referenceNumber: marker },
+    });
+    if (existing) {
+      return { alreadyRecorded: true, results: [] };
+    }
+
+    const account = await this.prisma.account.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!account) {
+      throw new BadRequestException('No active account available for automatic fee recording');
+    }
+
+    let recordedById = userId;
+    if (!recordedById) {
+      const systemUser = await this.prisma.user.findFirst();
+      recordedById = systemUser?.id;
+    }
+    if (!recordedById) {
+      throw new BadRequestException('No user available to attribute the automatic fee records');
+    }
+
+    const students = await this.prisma.student.findMany({
+      where: { status: 'ACTIVE' },
+      include: { class: true },
+    });
+
+    const byLevel = new Map<string, { total: number; count: number }>();
+    for (const s of students) {
+      const amount = baseFeeFor({
+        classLevel: s.class.level,
+        isWorkingMember: s.isWorkingMember,
+        monthlySalary: s.monthlySalary ? Number(s.monthlySalary) : null,
+      });
+      const g = byLevel.get(s.class.level) ?? { total: 0, count: 0 };
+      g.total += amount;
+      g.count += 1;
+      byLevel.set(s.class.level, g);
+    }
+
+    const monthName = monthLabel(monthEnum);
+    const results = [];
+
+    for (const [level, g] of byLevel) {
+      const total = Math.round(g.total * 100) / 100;
+      const levelLabel = level.replace('CLASS_', '').replace('_', '-');
+      const income = await this.prisma.income.create({
+        data: {
+          date: new Date(),
+          amount: total,
+          category: 'STUDENT_FEES',
+          sourceType: 'STUDENT_FEE',
+          paymentMethod: 'CASH',
+          description: `Auto class ${levelLabel} fee — ${monthName} ${year} (${g.count} students)`,
+          referenceNumber: marker,
+          accountId: account.id,
+          recordedById,
+        },
+      });
+
+      await this.audit.log({
+        userId: recordedById,
+        changedBy: recordedById,
+        action: 'AUTO_MONTHLY_FEES_RECORDED',
+        entityType: 'Income',
+        entityId: income.id,
+        newValue: { month: monthEnum, ethiopianYear: year, classLevel: level, amount: total, studentCount: g.count },
+      });
+
+      results.push({ classLevel: level, studentCount: g.count, amount: total, incomeId: income.id });
+    }
+
+    return { alreadyRecorded: false, results };
   }
 
   async update(id: string, dto: UpdateIncomeDto, userId: string) {

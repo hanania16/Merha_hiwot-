@@ -7,6 +7,7 @@ import { QueryIncomeDto } from './dto/query-income.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Role } from '@prisma/client';
+import { toEthiopian } from '../../common/constants/ethiopian-calendar';
 
 @Roles(Role.FINANCE_OFFICER, Role.ADMINISTRATOR)
 @Controller('finance/income')
@@ -21,6 +22,19 @@ export class IncomeController {
   @Post()
   create(@Body() dto: CreateIncomeDto, @CurrentUser() user: CurrentUserPayload) {
     return this.incomeService.create(dto, user.userId);
+  }
+
+  /** Manual trigger for the monthly auto-recording (same idempotent logic as the scheduler). */
+  @Post('auto-record-monthly')
+  autoRecordMonthly(
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    const today = toEthiopian(new Date());
+    const y = year ? Number(year) : today.year;
+    const m = month ? Number(month) : today.month;
+    return this.incomeService.autoRecordMonthlyFees(y, m, user?.userId);
   }
 
   @Patch(':id')

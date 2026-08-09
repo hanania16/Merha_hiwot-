@@ -1,5 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EthiopianMonth } from '@prisma/client';
+import { ETHIOPIAN_MONTHS } from '../../common/constants/ethiopian-calendar';
+import { FEE_TRACKING_START_YEAR, feeMonthsElapsed, isWithinFeeTrackingWindow } from '../../common/constants/fee-rules';
+
+const monthOrder = (month: EthiopianMonth) =>
+  ETHIOPIAN_MONTHS.find((m) => m.value === month)?.order ?? 1;
+
+const countPaidInWindow = (
+  payments: { status: string; ethiopianYear: number; month: EthiopianMonth }[],
+) => payments.filter((p) => p.status === 'PAID' && isWithinFeeTrackingWindow(p.ethiopianYear, monthOrder(p.month))).length;
 
 @Injectable()
 export class FinanceAnalyticsService {
@@ -77,11 +87,12 @@ export class FinanceAnalyticsService {
   async collectionRate(ethiopianYear: number) {
     const students = await this.prisma.student.findMany({
       where: { status: 'ACTIVE' },
-      include: { monthlyPayments: { where: { ethiopianYear } } },
+      include: { monthlyPayments: { where: { ethiopianYear: { gte: FEE_TRACKING_START_YEAR } } } },
     });
-    const totalPossible = students.length * 13;
+    const elapsed = feeMonthsElapsed();
+    const totalPossible = students.length * elapsed;
     const totalPaid = students.reduce(
-      (sum, s) => sum + s.monthlyPayments.filter((p) => p.status === 'PAID').length,
+      (sum, s) => sum + countPaidInWindow(s.monthlyPayments),
       0,
     );
     return {
@@ -93,11 +104,11 @@ export class FinanceAnalyticsService {
     };
   }
 
-  /** Not paid / overdue / paid today / paid this month / paid late — for the Finance analytics tiles. */
+  /** Not paid / paid today / paid this month — for the Finance analytics tiles. Penalties are not tracked. */
   async paymentStatusBreakdown(ethiopianYear: number) {
     const students = await this.prisma.student.findMany({
       where: { status: 'ACTIVE' },
-      include: { monthlyPayments: { where: { ethiopianYear } } },
+      include: { monthlyPayments: { where: { ethiopianYear: { gte: FEE_TRACKING_START_YEAR } } } },
     });
 
     const todayStart = new Date();
@@ -106,14 +117,11 @@ export class FinanceAnalyticsService {
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
 
-    let notPaid = 0, overdue = 0, paidToday = 0, paidThisMonth = 0, paidLate = 0;
+    const elapsed = feeMonthsElapsed();
+    let notPaid = 0, paidToday = 0, paidThisMonth = 0;
 
     for (const s of students) {
-      const paidCount = s.monthlyPayments.filter((p) => p.status === 'PAID').length;
-      if (paidCount < 13) notPaid++;
-
-      const hasPenalty = s.monthlyPayments.some((p) => Number(p.penaltyAmount) > 0);
-      if (hasPenalty) { overdue++; paidLate++; }
+      if (countPaidInWindow(s.monthlyPayments) < elapsed) notPaid++;
 
       const paidToday_ = s.monthlyPayments.some((p) => p.paidDate && p.paidDate >= todayStart);
       if (paidToday_) paidToday++;
@@ -122,7 +130,7 @@ export class FinanceAnalyticsService {
       if (paidThisMonth_) paidThisMonth++;
     }
 
-    return { notPaid, overdue, paidToday, paidThisMonth, paidLate, totalActiveStudents: students.length };
+    return { notPaid, paidToday, paidThisMonth, totalActiveStudents: students.length };
   }
 
   async yearlyFinancialTrend(years = 5) {

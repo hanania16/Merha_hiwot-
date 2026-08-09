@@ -41,12 +41,10 @@ export default function AnalyticsPage() {
       )}
 
       {paymentStatus && (
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <StatCard label="Not Paid" value={String(paymentStatus.notPaid)} accent="red" />
-          <StatCard label="Overdue" value={String(paymentStatus.overdue)} accent="red" />
           <StatCard label="Paid Today" value={String(paymentStatus.paidToday)} accent="green" />
           <StatCard label="Paid This Month" value={String(paymentStatus.paidThisMonth)} accent="green" />
-          <StatCard label="Paid Late" value={String(paymentStatus.paidLate)} accent="gold" />
         </div>
       )}
 

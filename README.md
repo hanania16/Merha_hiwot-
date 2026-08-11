@@ -9,7 +9,7 @@ A two-dashboard Church Management System for an Ethiopian Orthodox Sunday School
 - Consistent black/gold/white palette across all three dashboards (Finance, Attendance, Admin).
 - English/Amharic toggle (top-right of every dashboard page) — sidebar labels and key headings switch instantly; student names display in Amharic when available and the toggle is set to አማ.
 - Student names fully support Amharic Unicode (`fullNameAmharic` field, searchable).
-
+[[]]
 **Student data**
 - Every student has an auto-generated Student ID (`MH-0001`, …), English + Amharic name, gender, phone, parent info, class, registration date, and working-member flag (for the 2%-of-salary fee rule).
 - Seed data now includes 15 realistic bilingual students, 3 teachers, and 3 events.
@@ -122,4 +122,24 @@ Seed data includes one student already auto-inactivated (5 consecutive absences)
 - **Amharic coverage**: the toggle translates sidebar/header labels and displays Amharic student names; it's a lightweight dictionary (`lib/i18n.tsx`), not a full i18n framework — extend `DICTIONARY` for more strings as needed.
 - **Weekly digest delivery**: in-app notification only (see above) — no outbound email/SMS provider is configured.
 - **S3 photo upload** is still stubbed (schema field exists, endpoints accept a URL string).
+- **Student-fee income ledger (single source of truth)**: `MonthlyPayment` is now the source of truth for student-fee revenue — dashboards compute "Student Fees Collected" as `SUM(amount) WHERE status = 'PAID'` directly from `MonthlyPayment`, never from `Income` rows. An `Income` ledger row is created only as an **idempotent byproduct** when a payment actually becomes PAID (keyed `STUDENT_FEE:{studentId}:{year}:{month}`, enforced by a DB unique constraint on `Income.referenceNumber` and written with an atomic `upsert` so concurrent recordings can't double-write), via the single `deriveFeeIncome()` path shared by single-student and whole-class recording. Both `recordPayment()` and `recordClassPayments()` run the `MonthlyPayment` upsert and the derived `Income` row in **one DB transaction**, so a payment can never be PAID without its ledger row. `autoRecordMonthlyFees()` (the 26th scheduler / `POST /finance/income/auto-record-monthly`) no longer books revenue at all — it only creates `UNPAID` `MonthlyPayment` rows for active students that lack one for the month, and never overwrites existing rows.
+
+## Known follow-ups (tracked, not done)
+
+- **Legacy student-fee Income rows — review + delete on production** (dev seed DB already cleaned). Old accrual-estimate `Income` rows — per-class aggregates (`referenceNumber = AUTO:STUDENT_FEES:{year}:{month}`) and marker-less class-batch rows — are double-counted against individually-recorded payments and/or not backed by real payments. Because revenue is now derived from `MonthlyPayment`, they must be reviewed and removed before relying on `Income` ledger totals (`currentBalance`, income reports).
+  - **OWNER:** Hanania (Finance Officer)
+  - **DEADLINE:** end of every month (recurring — monthly review/cleanup as part of the month-end close)
+  - **Must capture before/after prod numbers when run:** record `totalIncome` and the STUDENT_FEE income subtotal *before* and *after* the delete. The dev seed drop was **730 ETB** (25536 → 24806). The equivalent prod drop must be captured and communicated to whoever reads the finance dashboard **before** the migration is applied, so the reported decrease is understood as *accuracy correction* (removing double-counted accruals), not missing money.
+  - Preview then delete:
+  ```sql
+  -- preview:
+  SELECT id, amount, "referenceNumber", description FROM income
+  WHERE "sourceType" = 'STUDENT_FEE'
+    AND ("referenceNumber" IS NULL OR "referenceNumber" NOT LIKE 'STUDENT_FEE:%');
+  -- delete (after review):
+  DELETE FROM income
+  WHERE "sourceType" = 'STUDENT_FEE'
+    AND ("referenceNumber" IS NULL OR "referenceNumber" NOT LIKE 'STUDENT_FEE:%');
+  ```
+- **Jest config issue**: `jest` fails to parse the `.ts` spec sources in `src/` (decorator syntax) while the compiled `dist/` versions pass — currently masked because 26 tests still pass via `dist`. Fix the jest/babel or ts-jest config so source-level suites can fail loudly instead of silently degrading.
 - Frontend type-checked and production-built clean (20 routes) after every change in this pass. `prisma generate`/`migrate` couldn't be verified in this sandbox (needs `binaries.prisma.sh`, not reachable here) — works normally with standard internet access.

@@ -78,6 +78,8 @@ enum IncomeCategory {
   DONATIONS
   DEVELOPMENT_DEPART
   OTHERS
+  OPENING_BALANCE
+  REVERSAL
 }
 
 enum ExpenseCategory {
@@ -90,6 +92,7 @@ enum ExpenseCategory {
   EVENTS
   CHARITY
   MISCELLANEOUS
+  REVERSAL
 }
 
 enum NotificationType {
@@ -391,15 +394,22 @@ model ReceiptPhoto {
 // ----------------------------------------------------------------------------
 
 /// Cash boxes / bank accounts that income and expense movements belong to.
+///
+/// currentBalance is NEVER written by a user-facing endpoint — it only changes
+/// as a side effect of recording an Income/Expense (or an opening-balance
+/// ledger entry), all inside a single transaction guarded by a row lock. See
+/// LedgerService. The audit trail must be able to explain every balance from
+/// entry #1 onward, so opening balances are ledger entries, not raw fields.
 model Account {
-  id            String      @id @default(uuid())
-  name          String
-  type          AccountType
-  bankName      String?
-  accountNumber String?
-  isActive      Boolean     @default(true)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id             String      @id @default(uuid())
+  name           String
+  type           AccountType
+  bankName       String?
+  accountNumber  String?
+  currentBalance Decimal     @default(0) @db.Decimal(12, 2)
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   incomes         Income[]
   expenses        Expense[]
@@ -467,11 +477,15 @@ model Income {
   sourceType       IncomeSourceType
   paymentMethod    PaymentMethod
   description      String?
-  referenceNumber  String?
+  referenceNumber  String?   @unique
   notes            String?
   status           TransactionStatus @default(PENDING_APPROVAL)
   accountId        String
   account          Account           @relation(fields: [accountId], references: [id])
+  /// Account balance after this entry, stamped atomically at write time. Null
+  /// only for system-derived rows (e.g. student-fee revenue) that don't move a
+  /// bank balance. Never recalculated — corrections go through REVERSAL entries.
+  runningBalance Decimal?           @db.Decimal(12, 2)
   receiptId        String?           @unique
   receipt          Receipt?          @relation("ReceiptIncome", fields: [receiptId], references: [id])
   monthlyPaymentId String?
@@ -485,6 +499,13 @@ model Income {
   approvedAt       DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
+
+  /// Set when this Income is a REVERSAL of an Expense.
+  reversesExpenseId String?
+  reversesExpense   Expense? @relation("ExpenseReversedByIncome", fields: [reversesExpenseId], references: [id])
+
+  /// Reversal Expenses that undo this Income (append-only correction path).
+  reversedByExpense Expense[] @relation("IncomeReversedByExpense")
 
   approvals TransactionApproval[]
 
@@ -509,13 +530,24 @@ model Expense {
   status             TransactionStatus @default(PENDING_APPROVAL)
   accountId          String
   account            Account           @relation(fields: [accountId], references: [id])
-  recordedById       String
-  recordedBy         User              @relation("ExpenseRecordedBy", fields: [recordedById], references: [id])
-  approvedById       String?
-  approvedBy         User?             @relation("ExpenseApprovedBy", fields: [approvedById], references: [id])
-  approvedAt         DateTime?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  /// Account balance after this entry, stamped atomically at write time. Null
+  /// only for system-derived rows that don't move a bank balance. Never
+  /// recalculated — corrections go through REVERSAL entries.
+  runningBalance Decimal?           @db.Decimal(12, 2)
+  recordedById     String
+  recordedBy       User              @relation("ExpenseRecordedBy", fields: [recordedById], references: [id])
+  approvedById     String?
+  approvedBy       User?             @relation("ExpenseApprovedBy", fields: [approvedById], references: [id])
+  approvedAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  /// Set when this Expense is a REVERSAL of an Income.
+  reversesIncomeId String?
+  reversesIncome   Income?   @relation("IncomeReversedByExpense", fields: [reversesIncomeId], references: [id])
+
+  /// Reversal Incomes that undo this Expense (append-only correction path).
+  reversedByIncome Income[]  @relation("ExpenseReversedByIncome")
 
   approvals TransactionApproval[]
 

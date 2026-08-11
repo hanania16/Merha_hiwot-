@@ -1,7 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ExpenseService } from './expense.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
-import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { ApproveTransactionDto } from './dto/approve-transaction.dto';
 import { QueryExpenseDto } from './dto/query-expense.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -23,18 +22,14 @@ export class ExpenseController {
     return this.expenseService.create(dto, user.userId);
   }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateExpenseDto, @CurrentUser() user: CurrentUserPayload) {
-    return this.expenseService.update(id, dto, user.userId);
-  }
-
   @Post(':id/approve')
   approve(@Param('id') id: string, @Body() dto: ApproveTransactionDto, @CurrentUser() user: CurrentUserPayload) {
     return this.expenseService.approve(id, dto, user.userId);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
-    return this.expenseService.remove(id, user.userId);
+  /** Append-only correction: books an offsetting REVERSAL Income, never edits/deletes. */
+  @Post(':id/reverse')
+  reverse(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.expenseService.reverse(id, user.userId);
   }
 }

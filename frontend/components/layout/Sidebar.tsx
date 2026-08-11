@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Wallet, TrendingDown, FileBarChart, PieChart, Receipt,
-  LogOut, Users, CalendarCheck, CalendarDays, UserX, ShieldCheck, X, Landmark,
+  LogOut, Users, CalendarCheck, CalendarDays, UserX, ShieldCheck, X,
 } from 'lucide-react';
 import { logout, getCurrentUser } from '@/lib/auth';
 import { useLang } from '@/lib/i18n';
@@ -13,7 +13,6 @@ import { useLang } from '@/lib/i18n';
 const FINANCE_NAV = [
   { href: '/dashboard/finance', key: 'dashboard', icon: LayoutDashboard },
   { href: '/dashboard/finance/student-fees', key: 'studentFees', icon: Wallet },
-  { href: '/dashboard/finance/bank-accounts', key: 'bankAccounts', icon: Landmark },
   { href: '/dashboard/finance/income', key: 'income', icon: TrendingDown },
   { href: '/dashboard/finance/expense', key: 'expenses', icon: TrendingDown },
   { href: '/dashboard/finance/analytics', key: 'analytics', icon: PieChart },

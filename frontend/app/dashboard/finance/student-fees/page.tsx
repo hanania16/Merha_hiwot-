@@ -2,11 +2,23 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { ETHIOPIAN_MONTHS, currentEthiopianYear, toEthiopian, monthLabel, formatETB, formatEthiopianDateFromGregorian } from '@/lib/ethiopian-calendar';
+import { ETHIOPIAN_MONTHS, currentEthiopianYear, toEthiopian, formatETB, formatEthiopianDateFromGregorian } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { useLang } from '@/lib/i18n';
+
+/** Fee tracking window starts at Nehase 2018 — same as backend fee-rules.ts. */
+const FEE_TRACKING_START_YEAR = 2018;
+const FEES_PER_YEAR = 13;
+/** Only the most recent months are shown inline; full range behind a per-row toggle. */
+const INLINE_MONTHS = 6;
+
+const ENGLISH_MONTH_NAMES: Record<string, string> = {
+  MESKEREM: 'Meskerem', TIKIMT: 'Tikimt', HIDAR: 'Hidar', TAHSAS: 'Tahsas', TIR: 'Tir',
+  YEKATIT: 'Yekatit', MEGABIT: 'Megabit', MIYAZIA: 'Miyazia', GINBOT: 'Ginbot', SENE: 'Sene',
+  HAMLE: 'Hamle', NEHASE: 'Nehase', PAGUME: 'Pagume',
+};
 
 interface SelectedMonthRecord {
   month: string;
@@ -34,25 +46,69 @@ interface FeeRow {
   lastPaidYear: number | null;
   monthlyBaseFee: number;
   outstandingBalance: number;
-  months: { month: string; status: string }[];
+  months: { month: string; status: string; amount: number | string }[];
   selectedMonth: SelectedMonthRecord | null;
 }
 interface ClassGroup { id: string; name: string; }
 
 const num = (v: number | string | null | undefined) => Number(v ?? 0);
 
+/** Ordered {value,label,year} cells from Nehase 2018 through the current Ethiopian month. */
+function buildMonthWindow() {
+  const today = toEthiopian(new Date());
+  const cells: { value: string; label: string; year: number }[] = [];
+  let year = FEE_TRACKING_START_YEAR;
+  let order = 12; // Nehase
+  while (year < today.year || (year === today.year && order <= today.month)) {
+    const m = ETHIOPIAN_MONTHS.find((x) => x.order === order);
+    if (m) cells.push({ value: m.value, label: m.label, year });
+    order += 1;
+    if (order > FEES_PER_YEAR) {
+      order = 1;
+      year += 1;
+    }
+  }
+  return cells;
+}
+
+const WINDOW = buildMonthWindow();
+const LAST_SIX = WINDOW.slice(-INLINE_MONTHS);
+
+function MonthDot({
+  payment,
+  year,
+  value,
+}: {
+  payment: { status: string; amount: number | string } | undefined;
+  year: number;
+  value: string;
+}) {
+  const paid = payment?.status === 'PAID';
+  const english = ENGLISH_MONTH_NAMES[value] ?? value;
+  const amount = paid && payment ? formatETB(num(payment.amount)) : null;
+  return (
+    <span
+      aria-label={`${english} ${year} — ${paid ? 'Paid' : 'Unpaid'}${amount ? `, ${amount}` : ''}`}
+      title={`${english} ${year} — ${paid ? `Paid, ${amount}` : 'Unpaid'}`}
+      className={`inline-block w-3.5 h-3.5 rounded-full border border-transparent ${
+        paid
+          ? 'bg-status-present'
+          : 'bg-gray-200'
+      } hover:ring-2 hover:ring-gold/60 cursor-default`}
+    />
+  );
+}
+
 export default function StudentFeesPage() {
   const { lang } = useLang();
-  const today = toEthiopian(new Date());
-  const defaultMonth = ETHIOPIAN_MONTHS.find((m) => m.order === today.month)?.value ?? 'MESKEREM';
   const [rows, setRows] = useState<FeeRow[]>([]);
   const [classes, setClasses] = useState<ClassGroup[]>([]);
   const [search, setSearch] = useState('');
   const [classId, setClassId] = useState('');
   const [status, setStatus] = useState('');
-  const [month, setMonth] = useState<string>(defaultMonth);
   const [loading, setLoading] = useState(true);
   const [modalStudent, setModalStudent] = useState<FeeRow | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   async function load() {
     setLoading(true);
@@ -60,14 +116,27 @@ export default function StudentFeesPage() {
     if (search) params.set('search', search);
     if (classId) params.set('classId', classId);
     if (status) params.set('status', status);
-    if (month) params.set('month', month);
     const data = await api.get<FeeRow[]>(`/finance/student-fees?${params.toString()}`);
     setRows(data);
     setLoading(false);
   }
 
   useEffect(() => { api.get<ClassGroup[]>('/students/classes').then(setClasses); }, []);
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [classId, status, month]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [classId, status]);
+
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function monthStatusMap(r: FeeRow) {
+    const map = new Map<string, { status: string; amount: number | string }>();
+    for (const p of r.months) map.set(`${r.studentId}:${p.month}`, p);
+    return map;
+  }
 
   return (
     <div>
@@ -75,14 +144,6 @@ export default function StudentFeesPage() {
 
       <div className="card p-4 mb-6">
         <div className="flex flex-wrap gap-3 items-end">
-          <div>
-            <label className="label">Ethiopian month</label>
-            <select className="input min-w-[160px]" value={month} onChange={(e) => setMonth(e.target.value)}>
-              {ETHIOPIAN_MONTHS.map((m) => (
-                <option key={m.value} value={m.value}>{m.label}</option>
-              ))}
-            </select>
-          </div>
           <div className="flex-1 min-w-[200px]">
             <label className="label">Search</label>
             <input className="input" placeholder="Name, ID, parent…" value={search}
@@ -116,14 +177,29 @@ export default function StudentFeesPage() {
               <th>Status</th>
               <th className="hidden sm:table-cell">Unpaid Months</th>
               <th>Outstanding</th>
-              <th>{month ? `${monthLabel(month)} fee` : 'Month fee'}</th>
+              <th className="min-w-[14rem]">
+                <div className="flex items-center gap-3">
+                  <span className="font-semibold">Payment History</span>
+                  <span className="inline-flex items-center gap-2 text-[10px] font-normal text-slate">
+                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-status-present" title="Paid" /> paid
+                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-gray-200" title="Unpaid" /> unpaid
+                  </span>
+                </div>
+                <p className="text-[10px] font-normal text-slate mt-0.5">
+                  {LAST_SIX.length < WINDOW.length
+                    ? `Most recent ${LAST_SIX.length} months since Nehase ${FEE_TRACKING_START_YEAR} shown`
+                    : `Since Nehase ${FEE_TRACKING_START_YEAR}`} · hover a dot for details
+                </p>
+              </th>
               <th className="hidden md:table-cell">Last Paid</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => {
-              const sel = r.selectedMonth;
+              const map = monthStatusMap(r);
+              const showFull = expanded.has(r.studentId);
+              const cells = showFull ? WINDOW : LAST_SIX;
               return (
                 <tr key={r.studentId}>
                   <td className="font-medium text-ink">
@@ -136,15 +212,19 @@ export default function StudentFeesPage() {
                     {formatETB(r.outstandingBalance)}
                   </td>
                   <td>
-                    {sel ? (
-                      <div>
-                        <Badge variant={sel.status === 'PAID' ? 'paid' : 'unpaid'}>{sel.status}</Badge>
-                        <p className="text-sm text-ink font-medium mt-1">{formatETB(num(sel.amount))}</p>
-                        <p className="text-[10px] text-slate">{formatETB(num(sel.baseAmount))}</p>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-slate">Not generated</span>
-                    )}
+                    <div className="flex flex-wrap items-center gap-[5px] py-1">
+                      {cells.map((c) => (
+                        <MonthDot key={`${c.value}${c.year}`} payment={map.get(`${r.studentId}:${c.value}`)} year={c.year} value={c.value} />
+                      ))}
+                      {WINDOW.length > INLINE_MONTHS && (
+                        <button
+                          className="ml-1 text-[10px] text-gold font-medium hover:underline"
+                          onClick={() => toggleExpand(r.studentId)}
+                        >
+                          {showFull ? 'Show less' : `Show all ${WINDOW.length}`}
+                        </button>
+                      )}
+                    </div>
                   </td>
                   <td className="hidden md:table-cell">{r.lastPaymentDate ? formatEthiopianDateFromGregorian(new Date(r.lastPaymentDate)) : '—'}</td>
                   <td>

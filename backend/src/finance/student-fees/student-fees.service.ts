@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { EthiopianMonth, PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
+import { EthiopianMonth, PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
-import { ETHIOPIAN_MONTHS, currentEthiopianYear, monthLabel } from '../../common/constants/ethiopian-calendar';
+import { ETHIOPIAN_MONTHS, currentEthiopianYear } from '../../common/constants/ethiopian-calendar';
 import {
   FEE_TRACKING_START_YEAR,
   baseFeeFor,
@@ -148,32 +148,23 @@ export class StudentFeesService {
     });
     const amountPerMonth = dto.amountPerMonth ?? base;
 
-    // The MonthlyPayment upsert and its derived Income row run in ONE transaction
-    // so a payment can never become PAID without its ledger row (and vice-versa).
-    return this.prisma.$transaction(async (tx) => {
-      const results = [];
-      for (const month of dto.months) {
-        const total = Math.round(amountPerMonth * 100) / 100;
-        const { payment, newlyPaid } = await this.upsertPayment(tx.monthlyPayment, {
-          studentId: dto.studentId,
-          ethiopianYear: dto.ethiopianYear,
-          month,
-          amount: total,
-          notes: dto.notes,
-          userId,
-        });
-        if (newlyPaid) {
-          await this.deriveFeeIncome(tx, payment, {
-            studentName: student.fullName,
-            ethiopianYear: dto.ethiopianYear,
-            month,
-            userId,
-          });
-        }
-        results.push(payment);
-      }
-      return results;
-    });
+    // Payment recording only marks the month PAID/UNPAID — no Income row is
+    // created here. Class-level income is aggregated later by the monthly batch
+    // job (recordMonthlyClassIncome), which also stamps includedInIncomeAt.
+    const results = [];
+    for (const month of dto.months) {
+      const total = Math.round(amountPerMonth * 100) / 100;
+      const { payment } = await this.upsertPayment(this.prisma.monthlyPayment, {
+        studentId: dto.studentId,
+        ethiopianYear: dto.ethiopianYear,
+        month,
+        amount: total,
+        notes: dto.notes,
+        userId,
+      });
+      results.push(payment);
+    }
+    return results;
   }
 
   /**
@@ -242,63 +233,11 @@ export class StudentFeesService {
   }
 
   /**
-   * Idempotent ledger byproduct: creates exactly one STUDENT_FEES Income row for
-   * a MonthlyPayment that actually became PAID, keyed by
-   * `STUDENT_FEE:{studentId}:{year}:{month}` so re-running a batch or re-paying
-   * an already-paid month is a no-op. The key is enforced by a DB unique
-   * constraint on `Income.referenceNumber` and written with an atomic `upsert`,
-   * so two concurrent recordings of the same student/month cannot double-write —
-   * the loser becomes a no-op instead of a duplicate. This is the single path
-   * that turns a MonthlyPayment into an Income ledger row — dashboards read the
-   * payment's amount directly, so the ledger can never drift from collections.
-   */
-  private async deriveFeeIncome(
-    db: Prisma.TransactionClient,
-    payment: { id: string; studentId: string; amount: number | Prisma.Decimal; paidDate: Date | null },
-    args: {
-      studentName: string;
-      ethiopianYear: number;
-      month: EthiopianMonth;
-      accountId?: string;
-      paymentMethod?: PaymentMethod;
-      userId: string;
-    },
-  ) {
-    const marker = `STUDENT_FEE:${payment.studentId}:${args.ethiopianYear}:${args.month}`;
-
-    let accountId = args.accountId;
-    if (!accountId) {
-      const account = await db.account.findFirst({ where: { isActive: true }, orderBy: { createdAt: 'asc' } });
-      accountId = account?.id;
-    }
-    if (!accountId) return null;
-
-    return db.income.upsert({
-      where: { referenceNumber: marker },
-      update: {},
-      create: {
-        date: payment.paidDate ?? new Date(),
-        amount: payment.amount,
-        category: 'STUDENT_FEES',
-        sourceType: 'STUDENT_FEE',
-        paymentMethod: args.paymentMethod ?? 'CASH',
-        description: `Student fee — ${args.studentName} — ${monthLabel(args.month)} ${args.ethiopianYear}`,
-        referenceNumber: marker,
-        accountId,
-        monthlyPaymentId: payment.id,
-        studentId: payment.studentId,
-        recordedById: args.userId,
-      },
-    });
-  }
-
-  /**
    * Whole-class bulk recording. Applies the class fee rule per student (or an
    * optional per-student override) for the selected months, reusing the exact
    * same upsert+audit path as single-student recording. The whole batch runs in
-   * one DB transaction. A derived STUDENT_FEES Income row is created per
-   * student-month that actually became newly PAID (see deriveFeeIncome) so the
-   * ledger reflects real collections — never as an aggregate accrual guess.
+   * one DB transaction. Only marks months PAID/UNPAID — no Income row is created
+   * here; class-level income is aggregated later by the monthly batch job.
    */
   async recordClassPayments(dto: RecordClassPaymentsDto, userId: string) {
     const students = await this.prisma.student.findMany({
@@ -315,8 +254,6 @@ export class StudentFeesService {
       for (const month of dto.months) {
         const paymentIds: string[] = [];
         let monthTotal = 0;
-        let newlyPaid = false;
-        let incomeCount = 0;
 
         for (const s of students) {
           const defaultAmount = baseFeeFor({
@@ -330,7 +267,7 @@ export class StudentFeesService {
               : Math.round(defaultAmount * 100) / 100;
 
           monthTotal += amount;
-          const { payment, newlyPaid: np } = await this.upsertPayment(tx.monthlyPayment, {
+          const { payment } = await this.upsertPayment(tx.monthlyPayment, {
             studentId: s.id,
             ethiopianYear: dto.ethiopianYear,
             month,
@@ -338,18 +275,6 @@ export class StudentFeesService {
             notes: dto.notes,
             userId,
           });
-          if (np) {
-            newlyPaid = true;
-            const income = await this.deriveFeeIncome(tx, payment, {
-              studentName: s.fullName,
-              ethiopianYear: dto.ethiopianYear,
-              month,
-              accountId: dto.accountId,
-              paymentMethod: dto.paymentMethod,
-              userId,
-            });
-            if (income) incomeCount++;
-          }
           paymentIds.push(payment.id);
         }
 
@@ -360,8 +285,6 @@ export class StudentFeesService {
           classLevel: dto.classLevel,
           studentCount: students.length,
           amount: total,
-          incomeCreated: newlyPaid && incomeCount > 0,
-          incomeCount,
           paymentCount: paymentIds.length,
         });
       }

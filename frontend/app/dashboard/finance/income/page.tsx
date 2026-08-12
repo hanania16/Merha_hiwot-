@@ -40,7 +40,13 @@ export default function IncomePage() {
 
   return (
     <div>
-      <Topbar title="Income Management" subtitle="Student fees (automatic), donations, development department, and other income" />
+      <Topbar title="Income Management" subtitle="Student fees (automatic batches), donations, development department, and other income" />
+
+      <div className="mb-4 rounded-lg border border-gold/20 bg-gold/5 px-4 py-3 text-xs text-slate">
+        Class fee income is recorded in batches around the 26th of each Ethiopian month, so the
+        <span className="font-semibold text-ink"> STUDENT_FEES </span>
+        total on this page can lag behind the amounts actually paid until the next batch run.
+      </div>
 
       <div className="flex justify-end mb-4">
         <button className="btn-gold" onClick={() => setOpen(true)}>+ Record Income</button>

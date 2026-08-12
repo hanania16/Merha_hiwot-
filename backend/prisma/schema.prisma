@@ -348,8 +348,12 @@ model MonthlyPayment {
   amount        Decimal        @db.Decimal(12, 2)
   notes         String?
   paidDate      DateTime?
-  recordedById  String?
-  recordedBy    User?          @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+  // Stamp set only by the monthly class-income batch job (recordMonthlyClassIncome).
+  // Set = this payment's amount has already been rolled into an aggregated
+  // STUDENT_FEES Income row. Never written by recordPayment/recordClassPayments.
+  includedInIncomeAt DateTime?
+  recordedById    String?
+  recordedBy      User?          @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 

@@ -32,6 +32,19 @@ export class IncomeController {
     return this.incomeService.autoRecordMonthlyFees(y, m);
   }
 
+  /**
+   * Manual trigger for the batched class income recording — run it early or use
+   * it to sweep late payments in a month after the scheduler already ran. Same
+   * logic (and idempotency via includedInIncomeAt) as the 26th scheduler.
+   */
+  @Post('record-monthly-class-income')
+  recordMonthlyClassIncome(@Query('year') year?: string, @Query('month') month?: string) {
+    const today = toEthiopian(new Date());
+    const y = year ? Number(year) : today.year;
+    const m = month ? Number(month) : today.month;
+    return this.incomeService.recordMonthlyClassIncome(y, m);
+  }
+
   @Post(':id/approve')
   approve(@Param('id') id: string, @Body() dto: ApproveTransactionDto, @CurrentUser() user: CurrentUserPayload) {
     return this.incomeService.approve(id, dto, user.userId);

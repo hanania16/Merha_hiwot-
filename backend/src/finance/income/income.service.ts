@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ApprovalDecision, IncomeSourceType } from '@prisma/client';
+import { ApprovalDecision, ClassLevel, IncomeSourceType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { FinanceAuditService } from '../../services/financeAuditService';
@@ -158,6 +158,118 @@ export class IncomeService {
       alreadyRecorded: created === 0,
       results,
     };
+  }
+
+  /** Format a ClassLevel enum as the readable "1-3" / "4-6" / "7-12" label. */
+  private classLevelLabel(level: ClassLevel): string {
+    return level.replace('CLASS_', '').replace('_', '-');
+  }
+
+  /**
+   * Batched class income recording — the ONLY path that turns PAID
+   * MonthlyPayment rows into aggregated STUDENT_FEES Income rows.
+   *
+   * Runs (scheduled on the 26th, manually triggerable any time) for one
+   * Ethiopian month: reads every row where status = PAID for that month that has
+   * NOT yet been included (includedInIncomeAt IS NULL), groups them by class
+   * level, and creates one Income row per level equal to that level's total.
+   * Every row folded into a class sum is then stamped includedInIncomeAt = now()
+   * in the SAME transaction, so a partial failure can never leave payments
+   * marked included without their income row (and vice-versa).
+   *
+   * Idempotency: because the query only pulls includedInIncomeAt IS NULL rows, a
+   * second run the same day naturally finds zero new rows for students already
+   * processed. The timestamp in the referenceNumber only prevents a uniqueness
+   * collision if two runs in the same microsecond hit the same level; it is not
+   * the idempotency guarantee. A student who pays after the 26th keeps
+   * includedInIncomeAt = null and is swept into the next daily run exactly once.
+   */
+  async recordMonthlyClassIncome(year: number, monthOrder: number) {
+    const monthEnum = ETHIOPIAN_MONTHS.find((m) => m.order === monthOrder)?.value;
+    if (!monthEnum) throw new BadRequestException('Invalid Ethiopian month');
+
+    const account = await this.prisma.account.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!account) {
+      throw new BadRequestException('No active account available to record class fee income');
+    }
+
+    const recordedById = (await this.prisma.user.findFirst())?.id;
+    if (!recordedById) {
+      throw new BadRequestException('No user available to attribute the class fee income');
+    }
+
+    const batchTimestamp = Date.now();
+
+    return this.prisma.$transaction(async (tx) => {
+      const payments = await tx.monthlyPayment.findMany({
+        where: {
+          status: 'PAID',
+          ethiopianYear: year,
+          month: monthEnum,
+          includedInIncomeAt: null,
+        },
+        include: { student: { include: { class: true } } },
+      });
+
+      // Group by the student's class level using the same enum as fee-rules.ts.
+      const byLevel = new Map<ClassLevel, Prisma.MonthlyPaymentGetPayload<{ include: { student: { include: { class: true } } } }>[]>();
+      for (const p of payments) {
+        const level = p.student.class.level;
+        const bucket = byLevel.get(level) ?? [];
+        bucket.push(p);
+        byLevel.set(level, bucket);
+      }
+
+      const createdRows = [];
+
+      for (const [level, rows] of byLevel) {
+        const total = Math.round(
+          rows.reduce((sum, p) => sum + Number(p.amount), 0) * 100,
+        ) / 100;
+
+        const referenceNumber = `STUDENT_FEES:${level}:${year}:${monthEnum}:${batchTimestamp}`;
+
+        const income = await tx.income.create({
+          data: {
+            date: new Date(),
+            amount: total,
+            category: 'STUDENT_FEES',
+            sourceType: 'STUDENT_FEE',
+            paymentMethod: 'CASH',
+            description: `Class ${this.classLevelLabel(level)} fees — ${monthLabel(monthEnum)} ${year}`,
+            referenceNumber,
+            accountId: account.id,
+            recordedById,
+          },
+        });
+
+        // Mark every included row AFTER its income row exists, in the same tx.
+        await tx.monthlyPayment.updateMany({
+          where: { id: { in: rows.map((r) => r.id) } },
+          data: { includedInIncomeAt: new Date() },
+        });
+
+        createdRows.push({
+          classLevel: level,
+          classLabel: this.classLevelLabel(level),
+          studentCount: rows.length,
+          amount: total,
+          incomeId: income.id,
+        });
+      }
+
+      return {
+        ethiopianYear: year,
+        month: monthEnum,
+        monthLabel: monthLabel(monthEnum),
+        batchTimestamp,
+        alreadyRecorded: createdRows.length === 0,
+        results: createdRows,
+      };
+    });
   }
 
   async approve(id: string, dto: ApproveTransactionDto, userId: string) {

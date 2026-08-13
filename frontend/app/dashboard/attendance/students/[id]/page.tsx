@@ -244,12 +244,16 @@ function EditStudentModal({ student, classes, onClose, onSaved }: { student: Pro
           Working member (pays 2% of monthly salary instead of the class fee)
         </label>
         {isWorkingMember && (
-          <div><label className="label">Monthly Salary (Birr)</label><input type="number" className="input" value={monthlySalary} onChange={(e) => setMonthlySalary(e.target.value)} /></div>
+          <div>
+            <label className="label">Monthly Salary (Birr)</label>
+            <input type="number" className="input" value={monthlySalary} onChange={(e) => setMonthlySalary(e.target.value)} />
+            {monthlySalary === '' && <p className="text-xs text-status-absent mt-1">Salary is required for working members (fee = 2% of salary).</p>}
+          </div>
         )}
 
         <div className="flex justify-end gap-2 pt-2">
           <button className="btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn-gold" disabled={saving || !fullName || !dateOfBirth || !parentName || !parentPhone} onClick={submit}>
+          <button className="btn-gold" disabled={saving || !fullName || !dateOfBirth || !parentName || !parentPhone || (isWorkingMember && monthlySalary === '')} onClick={submit}>
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>

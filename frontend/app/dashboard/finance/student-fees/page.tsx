@@ -90,7 +90,7 @@ function MonthDot({
     <span
       aria-label={`${english} ${year} — ${paid ? 'Paid' : 'Unpaid'}${amount ? `, ${amount}` : ''}`}
       title={`${english} ${year} — ${paid ? `Paid, ${amount}` : 'Unpaid'}`}
-      className={`inline-block w-3.5 h-3.5 rounded-full border border-transparent ${
+      className={`inline-block w-3 h-3 rounded-full border border-transparent ${
         paid
           ? 'bg-status-present'
           : 'bg-gray-200'
@@ -177,12 +177,12 @@ export default function StudentFeesPage() {
               <th>Status</th>
               <th className="hidden sm:table-cell">Unpaid Months</th>
               <th>Outstanding</th>
-              <th className="min-w-[14rem]">
-                <div className="flex items-center gap-3">
+              <th className="whitespace-nowrap">
+                <div className="flex items-center gap-2">
                   <span className="font-semibold">Payment History</span>
-                  <span className="inline-flex items-center gap-2 text-[10px] font-normal text-slate">
-                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-status-present" title="Paid" /> paid
-                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-gray-200" title="Unpaid" /> unpaid
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-normal text-slate">
+                    <span className="inline-block w-2 h-2 rounded-full bg-status-present" title="Paid" /> paid
+                    <span className="inline-block w-2 h-2 rounded-full bg-gray-200" title="Unpaid" /> unpaid
                   </span>
                 </div>
                 <p className="text-[10px] font-normal text-slate mt-0.5">
@@ -204,7 +204,12 @@ export default function StudentFeesPage() {
                 <tr key={r.studentId}>
                   <td className="font-medium text-ink">
                     <p>{lang === 'am' && r.fullNameAmharic ? r.fullNameAmharic : r.fullName}</p>
-                    <p className="text-xs text-slate font-mono font-normal">{r.studentCode} · {r.className}{r.isWorkingMember ? ' · Working Member' : ''}</p>
+                    <p className="text-xs text-slate font-mono font-normal">{r.studentCode} · {r.className}{r.isWorkingMember ? (
+  <span className="ml-1 inline-flex items-center gap-1 rounded-full border border-gold/50 bg-gold/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink">
+    <span className="h-1.5 w-1.5 rounded-full bg-gold shadow-[0_0_4px_rgba(212,175,55,0.8)]" />
+    Working Member
+  </span>
+) : ''}</p>
                   </td>
                   <td><Badge variant={r.status === 'PAID' ? 'paid' : r.status === 'PARTIAL' ? 'partial' : 'unpaid'}>{r.status}</Badge></td>
                   <td className="hidden sm:table-cell">{r.unpaidMonths}</td>
@@ -212,13 +217,13 @@ export default function StudentFeesPage() {
                     {formatETB(r.outstandingBalance)}
                   </td>
                   <td>
-                    <div className="flex flex-wrap items-center gap-[5px] py-1">
+                    <div className="flex items-center gap-[4px] py-1 whitespace-nowrap">
                       {cells.map((c) => (
                         <MonthDot key={`${c.value}${c.year}`} payment={map.get(`${r.studentId}:${c.value}`)} year={c.year} value={c.value} />
                       ))}
                       {WINDOW.length > INLINE_MONTHS && (
                         <button
-                          className="ml-1 text-[10px] text-gold font-medium hover:underline"
+                          className="ml-1.5 text-[10px] text-gold font-medium hover:underline whitespace-nowrap"
                           onClick={() => toggleExpand(r.studentId)}
                         >
                           {showFull ? 'Show less' : `Show all ${WINDOW.length}`}

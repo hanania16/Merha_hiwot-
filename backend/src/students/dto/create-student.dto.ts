@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsEnum, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsNumber, IsOptional, IsString, Min, MinLength, ValidateIf } from 'class-validator';
 import { Gender } from '@prisma/client';
 
 export class CreateStudentDto {
@@ -35,10 +35,13 @@ export class CreateStudentDto {
 
   @IsOptional()
   @IsBoolean()
+  @ValidateIf((o) => o.monthlySalary != null)
   isWorkingMember?: boolean;
 
   @IsOptional()
-  @IsNumber()
+  @IsNumber({}, { message: 'monthlySalary must be a number' })
+  @Min(1, { message: 'monthlySalary must be greater than 0' })
+  @ValidateIf((o) => o.isWorkingMember === true || o.monthlySalary != null)
   monthlySalary?: number;
 
   @IsOptional()

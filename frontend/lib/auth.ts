@@ -6,7 +6,7 @@ export interface AuthUser {
   id: string;
   fullName: string;
   email: string;
-  role: 'ADMINISTRATOR' | 'ATTENDANCE_OFFICER' | 'FINANCE_OFFICER';
+  role: 'ADMINISTRATOR' | 'FINANCE_OFFICER';
 }
 
 export async function login(email: string, password: string) {

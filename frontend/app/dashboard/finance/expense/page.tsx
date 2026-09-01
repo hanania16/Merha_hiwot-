@@ -6,6 +6,7 @@ import { formatETB, formatEthiopianDateFromGregorian, ethiopianTodayISO } from '
 import { Topbar } from '@/components/layout/Topbar';
 import { Modal } from '@/components/ui/Modal';
 import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
+import { useLang } from '@/lib/i18n';
 
 const CATEGORIES = [
   'TEACHING_MATERIALS', 'STATIONERY', 'SNACKS', 'TRANSPORTATION',
@@ -26,6 +27,7 @@ interface ExpenseRow {
 }
 
 export default function ExpensePage() {
+  const { t } = useLang();
   const [rows, setRows] = useState<ExpenseRow[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -41,22 +43,22 @@ export default function ExpensePage() {
 
   return (
     <div>
-      <Topbar title="Expense Management" subtitle="Teaching materials, events, maintenance, and more" />
+      <Topbar title={t('expenseManagement')} subtitle={t('expenseManagementSub')} />
 
       <div className="flex justify-end mb-4">
-        <button className="btn-gold" onClick={() => setOpen(true)}>+ Record Expense</button>
+        <button className="btn-gold" onClick={() => setOpen(true)}>{t('recordExpense')}</button>
       </div>
 
       <div className="card overflow-x-auto">
         <table className="table-base">
           <thead>
-            <tr><th>Date</th><th>Category</th><th>Description</th><th className="hidden md:table-cell">Recorded By</th><th className="hidden lg:table-cell">Approved By</th><th className="text-right">Amount</th></tr>
+            <tr><th>{t('date')}</th><th>{t('category')}</th><th>{t('description')}</th><th className="hidden md:table-cell">{t('recordedBy')}</th><th className="hidden lg:table-cell">{t('approvedBy')}</th><th className="text-right">{t('amount')}</th></tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
                 <td>{formatEthiopianDateFromGregorian(new Date(r.date))}</td>
-                <td>{r.category.replace(/_/g, ' ')}</td>
+                <td>{t(r.category)}</td>
                 <td>{r.description ?? '—'}</td>
                 <td className="hidden md:table-cell">{r.recordedBy?.fullName}</td>
                 <td className="hidden lg:table-cell">{r.approvedBy?.fullName ?? '—'}</td>
@@ -64,7 +66,7 @@ export default function ExpensePage() {
               </tr>
             ))}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={6} className="text-center text-sm text-slate py-8">No expenses recorded yet.</td></tr>
+              <tr><td colSpan={6} className="text-center text-sm text-slate py-8">{t('noExpensesYet')}</td></tr>
             )}
           </tbody>
         </table>
@@ -76,6 +78,7 @@ export default function ExpensePage() {
 }
 
 function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const { t } = useLang();
   const [date, setDate] = useState(ethiopianTodayISO());
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0]);
@@ -91,6 +94,10 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
       .catch(() => {});
   }, []);
 
+  const descriptionRequired = category === 'MISCELLANEOUS';
+  const canSave = !saving && !!amount && !!paymentMethod && !!accountId &&
+    (!descriptionRequired || !!description.trim());
+
   async function submit() {
     setSaving(true);
     try {
@@ -104,43 +111,49 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   }
 
   return (
-    <Modal open title="Record Expense" onClose={onClose}>
+    <Modal open title={t('recordExpenseTitle')} onClose={onClose}>
       <div className="space-y-4">
         <div>
-          <label className="label">Date</label>
+          <label className="label">{t('date')}</label>
           <EthiopianDatePicker value={date} onChange={(d) => setDate(d)} />
         </div>
         <div>
-          <label className="label">Category</label>
+          <label className="label">{t('category')}</label>
           <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
+            {CATEGORIES.map((c) => <option key={c} value={c}>{t(c)}</option>)}
           </select>
         </div>
         <div>
-          <label className="label">Payment Method</label>
+          <label className="label">{t('paymentMethod')}</label>
           <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-            {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m.replace(/_/g, ' ')}</option>)}
+            {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{t(m)}</option>)}
           </select>
         </div>
         <div>
-          <label className="label">Account</label>
+          <label className="label">{t('account')}</label>
           <select className="input" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-            {accounts.length === 0 && <option value="">No accounts available</option>}
+            {accounts.length === 0 && <option value="">{t('noAccountsAvailable')}</option>}
             {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="label">Amount (ETB)</label>
+          <label className="label">{t('amountETB')}</label>
           <input type="number" className="input" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </div>
         <div>
-          <label className="label">Description</label>
+          <label className="label">{t('description')}</label>
+          {descriptionRequired && (
+            <p className="text-xs text-gold mb-1">{t('specifyExpense')}</p>
+          )}
           <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
+          {descriptionRequired && !description.trim() && (
+            <p className="text-xs text-red-500">{t('specifyExpenseHint')}</p>
+          )}
         </div>
         <div className="flex justify-end gap-2">
-          <button className="btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn-gold" disabled={saving || !amount || !paymentMethod || !accountId} onClick={submit}>
-            {saving ? 'Saving…' : 'Save'}
+          <button className="btn-outline" onClick={onClose}>{t('cancel')}</button>
+          <button className="btn-gold" disabled={!canSave} onClick={submit}>
+            {saving ? t('saving') : t('save')}
           </button>
         </div>
       </div>

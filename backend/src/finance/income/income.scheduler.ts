@@ -10,25 +10,30 @@ export class IncomeAutoRecordScheduler {
   constructor(private income: IncomeService) {}
 
   /**
-   * Runs daily at 00:30 Africa/Addis_Ababa. From the 26th of every Ethiopian
-   * month (and every day after it) it batches the month's PAID student fees into
-   * class-level STUDENT_FEES Income rows. It deliberately keeps running past the
-   * 26th so a student who pays late simply gets swept into the next daily run —
-   * those rows keep includedInIncomeAt = null until the batch folds them in,
-   * exactly once. The UNPAID MonthlyPayment row generation (autoRecordMonthlyFees)
-   * is unchanged and runs here too.
+   * Runs daily at 00:30 Africa/Addis_Ababa.
+   *
+   * - From the 26th of every Ethiopian month (and every day after it) it creates
+   *   the current month's UNPAID MonthlyPayment rows (autoRecordMonthlyFees).
+   * - Every day it runs the class-income sweep (recordMonthlyClassIncome) with NO
+   *   month filter, so ALL PAID student fees that haven't been booked yet
+   *   (includedInIncomeAt = null) are folded into class-level STUDENT_FEES Income
+   *   rows — for whatever month/year they were actually paid. Running this every
+   *   day (not just from the 26th) is what closes the boundary gaps: Pagume (the
+   *   short final month whose days are always < 26), same-month payments made
+   *   after the previous 00:30 run, and catch-up / back-dated payments are all
+   *   swept on the next daily run instead of being left unincluded forever.
    */
   @Cron('30 0 * * *', { name: 'auto-monthly-student-fees', timeZone: 'Africa/Addis_Ababa' })
   async runDaily() {
     const { year, month, day } = toEthiopian(new Date());
-    if (day < 26) return;
+    if (day >= 26) {
+      await this.income.autoRecordMonthlyFees(year, month);
+    }
 
-    await this.income.autoRecordMonthlyFees(year, month);
-
-    const result = await this.income.recordMonthlyClassIncome(year, month);
+    const result = await this.income.recordMonthlyClassIncome();
     if (result.results.length > 0) {
       this.logger.log(
-        `Recorded class fee income for ${result.monthLabel} ${year}: ${JSON.stringify(result.results)}`,
+        `Recorded class fee income for ${result.results.length} class/month group(s): ${JSON.stringify(result.results)}`,
       );
     }
   }

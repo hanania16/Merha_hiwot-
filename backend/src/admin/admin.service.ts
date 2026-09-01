@@ -46,23 +46,6 @@ export class AdminService {
       }
     }
 
-    const [totalEvents, upcomingEvents] = await Promise.all([
-      this.prisma.event.count(),
-      this.prisma.event.count({ where: { status: 'UPCOMING' } }),
-    ]);
-
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(todayStart);
-    todayEnd.setHours(23, 59, 59, 999);
-    const todayAttendance = await this.prisma.attendance.findMany({
-      where: { event: { date: { gte: todayStart, lte: todayEnd } } },
-    });
-    const presentToday = todayAttendance.filter((a) => a.status === 'PRESENT' || a.status === 'LATE').length;
-    const attendancePercentageToday = todayAttendance.length
-      ? Math.round((presentToday / todayAttendance.length) * 1000) / 10
-      : 0;
-
     return {
       totalStudents,
       activeStudents,
@@ -72,9 +55,6 @@ export class AdminService {
       totalExpenses,
       currentBalance: totalIncome - totalExpenses,
       outstandingFees: Math.round(outstandingFees * 100) / 100,
-      totalEvents,
-      upcomingEvents,
-      attendancePercentageToday,
       ethiopianYear,
     };
   }

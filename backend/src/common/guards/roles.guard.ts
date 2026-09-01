@@ -8,7 +8,6 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
  * RBAC summary:
  * - ADMINISTRATOR: full access to both dashboards
  * - FINANCE_OFFICER: full access to Finance module, read-only elsewhere
- * - ATTENDANCE_OFFICER: full access to Attendance module, read-only elsewhere
  * Enforced per-route via the @Roles() decorator; routes without @Roles()
  * are accessible to any authenticated user.
  */

@@ -9,6 +9,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Role } from '@prisma/client';
 import { currentEthiopianYear, toEthiopian } from '../../common/constants/ethiopian-calendar';
+import { enumLabel, normLang } from './export-labels';
 
 const EXPORT_FORMATS = ['pdf', 'excel'];
 
@@ -83,12 +84,13 @@ export class FinanceReportsController {
     @Query('year') year?: string,
     @Query('month') month?: string,
     @Query('format') format = 'pdf',
+    @Query('lang') lang?: string,
   ) {
     const today = toEthiopian(new Date());
     const y = year ? Number(year) : today.year;
     const m = month ? Number(month) : today.month;
     const report = await this.reportsService.monthlyReport(y, m);
-    await this.writeExport(res, format, `audit-report-monthly-${y}-${m}`, report, this.currentUserEmail(req));
+    await this.writeExport(res, format, `audit-report-monthly-${y}-${m}`, report, this.currentUserEmail(req), normLang(lang));
   }
 
   @Get('yearly/export')
@@ -97,29 +99,31 @@ export class FinanceReportsController {
     @Req() req: Request,
     @Query('year') year?: string,
     @Query('format') format = 'pdf',
+    @Query('lang') lang?: string,
   ) {
     const y = year ? Number(year) : currentEthiopianYear();
     const report = await this.reportsService.yearlyReport(y);
-    await this.writeExport(res, format, `audit-report-yearly-${y}`, report, this.currentUserEmail(req));
+    await this.writeExport(res, format, `audit-report-yearly-${y}`, report, this.currentUserEmail(req), normLang(lang));
   }
 
   private currentUserEmail(req: Request): string | undefined {
     return (req.user as { email?: string } | undefined)?.email;
   }
 
-  private async writeExport(res: Response, format: string, filename: string, report: AuditReport, generatedBy?: string) {
+  private async writeExport(res: Response, format: string, filename: string, report: AuditReport, generatedBy?: string, lang: 'en' | 'am' = 'am') {
     const fmt = EXPORT_FORMATS.includes(format) ? format : 'pdf';
     const by = generatedBy ?? 'system';
     if (fmt === 'excel') {
-      await exportAuditExcel(res, report, filename, by);
+      await exportAuditExcel(res, report, filename, by, lang);
     } else {
-      await exportAuditPdf(res, report, filename, by);
+      await exportAuditPdf(res, report, filename, by, lang);
     }
   }
 
   @Get('financial/export/excel')
-  async financialExcel(@Query('from') from: string, @Query('to') to: string, @Res() res: Response) {
+  async financialExcel(@Query('from') from: string, @Query('to') to: string, @Res() res: Response, @Query('lang') lang?: string) {
     const report = await this.reportsService.buildFinancialReport(new Date(from), new Date(to));
+    const language = normLang(lang);
     await exportToExcel(
       res,
       'financial-report',
@@ -134,18 +138,21 @@ export class FinanceReportsController {
         ...report.incomes.map((i) => ({
           date: i.date.toISOString().slice(0, 10),
           type: 'Income',
-          category: i.category,
+          category: enumLabel(i.category, language),
           amount: Number(i.amount),
           description: i.description ?? '',
         })),
         ...report.expenses.map((e) => ({
           date: e.date.toISOString().slice(0, 10),
           type: 'Expense',
-          category: e.category,
+          category: enumLabel(e.category, language),
           amount: Number(e.amount),
           description: e.description ?? '',
         })),
       ],
+      report.lastStudentFeeBatchTime
+        ? `Student fee totals current as of ${report.lastStudentFeeBatchTime.toISOString().slice(0, 10)} (last daily batch)`
+        : undefined,
     );
   }
 
@@ -159,6 +166,9 @@ export class FinanceReportsController {
       `Collection Rate: ${report.collectionRate}%`,
       `Donations: ${report.donations.toLocaleString()} ETB`,
       `Outstanding Fee Months: ${report.outstandingFeeMonths}`,
-    ]);
+      report.lastStudentFeeBatchTime
+        ? `Student fee totals current as of ${report.lastStudentFeeBatchTime.toISOString().slice(0, 10)} (last daily batch)`
+        : '',
+    ].filter(Boolean));
   }
 }

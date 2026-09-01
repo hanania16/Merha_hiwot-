@@ -1,0 +1,14 @@
+# Local sandbox override: uses the already-built marha-hiwot-backend:sandbox image
+# so `docker compose up` works without a network install. Delete this file (or
+# the sandbox images) to go back to the tracked `build: ./backend` Dockerfile.
+services:
+  backend:
+    image: marha-hiwot-backend:sandbox
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+  frontend:
+    image: marha-hiwot-frontend:sandbox
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile

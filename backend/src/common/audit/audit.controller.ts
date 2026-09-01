@@ -5,10 +5,10 @@ import { Role } from '@prisma/client';
 
 /**
  * Shared audit trail for both dashboards. Administrators see everything;
- * Finance/Attendance officers can filter by entityType to see just their domain
- * (e.g. ?entityType=Expense or ?entityType=Attendance) via the frontend's query.
+ * Finance officers can filter by entityType to see just their domain
+ * (e.g. ?entityType=Expense) via the frontend's query.
  */
-@Roles(Role.ADMINISTRATOR, Role.FINANCE_OFFICER, Role.ATTENDANCE_OFFICER)
+@Roles(Role.ADMINISTRATOR, Role.FINANCE_OFFICER)
 @Controller('audit-log')
 export class AuditController {
   constructor(private audit: AuditService) {}

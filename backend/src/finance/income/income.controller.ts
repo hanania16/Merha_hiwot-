@@ -34,14 +34,15 @@ export class IncomeController {
 
   /**
    * Manual trigger for the batched class income recording — run it early or use
-   * it to sweep late payments in a month after the scheduler already ran. Same
-   * logic (and idempotency via includedInIncomeAt) as the 26th scheduler.
+   * it to sweep payments in a month the scheduler already ran past. Same logic
+   * (and idempotency via includedInIncomeAt) as the daily scheduler. With no
+   * query params it sweeps ALL unincluded PAID rows; pass year/month to narrow
+   * to one specific Ethiopian month.
    */
   @Post('record-monthly-class-income')
   recordMonthlyClassIncome(@Query('year') year?: string, @Query('month') month?: string) {
-    const today = toEthiopian(new Date());
-    const y = year ? Number(year) : today.year;
-    const m = month ? Number(month) : today.month;
+    const y = year ? Number(year) : undefined;
+    const m = month ? Number(month) : undefined;
     return this.incomeService.recordMonthlyClassIncome(y, m);
   }
 

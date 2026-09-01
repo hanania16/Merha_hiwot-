@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ApprovalDecision, ClassLevel, IncomeSourceType, Prisma } from '@prisma/client';
+import { ApprovalDecision, AccountType, ClassLevel, EthiopianMonth, IncomeCategory, IncomeSourceType, PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { FinanceAuditService } from '../../services/financeAuditService';
@@ -9,6 +9,31 @@ import { ETHIOPIAN_MONTHS, monthLabel } from '../../common/constants/ethiopian-c
 import { CreateIncomeDto } from './dto/create-income.dto';
 import { ApproveTransactionDto } from './dto/approve-transaction.dto';
 import { QueryIncomeDto } from './dto/query-income.dto';
+
+/**
+ * Legacy category for an income source. The Income form no longer lets users
+ * pick a category — `sourceType` is the source of truth. This only keeps the
+ * historical, non-null `category` column populated so category-based reports
+ * and filters never show empty buckets for new records.
+ */
+function defaultCategoryFor(sourceType: IncomeSourceType): IncomeCategory {
+  switch (sourceType) {
+    case IncomeSourceType.STUDENT_FEE:
+      return IncomeCategory.STUDENT_FEES;
+    case IncomeSourceType.OTHER:
+      return IncomeCategory.OTHERS;
+    case IncomeSourceType.DEBRE_TABOR_FEAST:
+    case IncomeSourceType.NEW_YEAR:
+    case IncomeSourceType.MESKEL_FEAST:
+    case IncomeSourceType.DONATION:
+    case IncomeSourceType.CHURCH_CONTRIBUTION:
+    case IncomeSourceType.FUNDRAISING:
+    case IncomeSourceType.SPECIAL_OFFERING:
+      return IncomeCategory.DONATIONS;
+    default:
+      return IncomeCategory.OTHERS;
+  }
+}
 
 @Injectable()
 export class IncomeService {
@@ -50,27 +75,59 @@ export class IncomeService {
       throw new BadRequestException('monthlyPaymentId can only be set when sourceType is STUDENT_FEE');
     }
 
+    const isTransfer = dto.paymentMethod === PaymentMethod.BANK_TRANSFER;
+    if (isTransfer && !dto.senderName?.trim()) {
+      throw new BadRequestException('Account owner name is required for bank transfer income');
+    }
+
     if (dto.receiptId) {
       const receipt = await this.prisma.receipt.findUnique({ where: { id: dto.receiptId } });
       if (!receipt) throw new NotFoundException('Receipt record not found');
     }
 
+    // The account dropdown was removed from the UI. The internal account to
+    // credit is now derived from the payment method: bank transfers hit a BANK
+    // account, cash hits a CASH account, with fallback to any active account.
+    let accountId = dto.accountId;
+    if (!accountId) {
+      const account = await this.prisma.account.findFirst({
+        where: {
+          isActive: true,
+          type: dto.paymentMethod === PaymentMethod.BANK_TRANSFER ? AccountType.BANK : AccountType.CASH,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (!account) {
+        const fallback = await this.prisma.account.findFirst({ where: { isActive: true }, orderBy: { createdAt: 'asc' } });
+        if (!fallback) {
+          throw new BadRequestException('No active account available to record this income');
+        }
+        accountId = fallback.id;
+      } else {
+        accountId = account.id;
+      }
+    }
+
     // Balance update (Account.currentBalance) + the ledger row (runningBalance)
     // commit atomically under a row lock — no path can update one without the
     // other. Corrections are append-only REVERSAL entries, never edits/deletes.
+    // Transfer metadata is only stored for bank-transfer income; non-transfer
+    // records always persist null so the fields never carry stale values.
     const income = await this.prisma.$transaction(async (tx) => {
-      const { newBalance } = await this.ledger.apply(tx, dto.accountId, dto.amount, 'IN');
+      const { newBalance } = await this.ledger.apply(tx, accountId, dto.amount, 'IN');
       return tx.income.create({
         data: {
           date: new Date(dto.date),
           amount: dto.amount,
-          category: dto.category,
+          category: dto.category ?? defaultCategoryFor(dto.sourceType),
           sourceType: dto.sourceType,
           paymentMethod: dto.paymentMethod,
           description: dto.description,
+          senderName: isTransfer ? (dto.senderName ?? null) : null,
+          senderAccountNumber: isTransfer ? (dto.senderAccountNumber ?? null) : null,
           referenceNumber: dto.referenceNumber,
           notes: dto.notes,
-          accountId: dto.accountId,
+          accountId,
           runningBalance: newBalance,
           receiptId: dto.receiptId ?? null,
           studentId: dto.studentId ?? null,
@@ -169,24 +226,37 @@ export class IncomeService {
    * Batched class income recording — the ONLY path that turns PAID
    * MonthlyPayment rows into aggregated STUDENT_FEES Income rows.
    *
-   * Runs (scheduled on the 26th, manually triggerable any time) for one
-   * Ethiopian month: reads every row where status = PAID for that month that has
-   * NOT yet been included (includedInIncomeAt IS NULL), groups them by class
-   * level, and creates one Income row per level equal to that level's total.
-   * Every row folded into a class sum is then stamped includedInIncomeAt = now()
-   * in the SAME transaction, so a partial failure can never leave payments
-   * marked included without their income row (and vice-versa).
+   * Reads every row where status = PAID that has NOT yet been included
+   * (includedInIncomeAt IS NULL) — regardless of which Ethiopian month/year the
+   * payment belongs to — groups them by (class level, Ethiopian year, month),
+   * and creates one Income row per level/month equal to that level's total.
+   * Grouping by (level, year, month) means each income row still represents one
+   * class level for one specific month, and a payment is always booked to the
+   * month/year it was actually paid for — never to the month the job happens to
+   * run in.
+   *
+   * This sweeping of EVERY unincluded row (instead of just the current month) is
+   * what closes the boundary gaps: Pagume (the short, final month whose days are
+   * always < 26) is booked as soon as any run occurs; a same-month payment made
+   * after the previous 00:30 run is caught by the next run; and a catch-up /
+   * back-dated payment for a non-current month is booked too. So no PAID fee is
+   * ever left as includedInIncomeAt = null indefinitely.
+   *
+   * `year` / `monthOrder` are optional narrowing filters (used by the manual
+   * trigger); when omitted, ALL unincluded PAID rows are swept. The scheduled
+   * run omits them.
    *
    * Idempotency: because the query only pulls includedInIncomeAt IS NULL rows, a
-   * second run the same day naturally finds zero new rows for students already
-   * processed. The timestamp in the referenceNumber only prevents a uniqueness
-   * collision if two runs in the same microsecond hit the same level; it is not
-   * the idempotency guarantee. A student who pays after the 26th keeps
-   * includedInIncomeAt = null and is swept into the next daily run exactly once.
+   * second run naturally finds zero new rows for shipments already processed. The
+   * timestamp in the referenceNumber only prevents a uniqueness collision if two
+   * runs in the same microsecond hit the same level/month; it is not the
+   * idempotency guarantee.
    */
-  async recordMonthlyClassIncome(year: number, monthOrder: number) {
-    const monthEnum = ETHIOPIAN_MONTHS.find((m) => m.order === monthOrder)?.value;
-    if (!monthEnum) throw new BadRequestException('Invalid Ethiopian month');
+  async recordMonthlyClassIncome(year?: number, monthOrder?: number) {
+    const monthEnum = monthOrder != null
+      ? ETHIOPIAN_MONTHS.find((m) => m.order === monthOrder)?.value
+      : undefined;
+    if (monthOrder != null && !monthEnum) throw new BadRequestException('Invalid Ethiopian month');
 
     const account = await this.prisma.account.findFirst({
       where: { isActive: true },
@@ -207,30 +277,41 @@ export class IncomeService {
       const payments = await tx.monthlyPayment.findMany({
         where: {
           status: 'PAID',
-          ethiopianYear: year,
-          month: monthEnum,
           includedInIncomeAt: null,
+          ...(year != null ? { ethiopianYear: year } : {}),
+          ...(monthEnum ? { month: monthEnum } : {}),
         },
         include: { student: { include: { class: true } } },
       });
 
-      // Group by the student's class level using the same enum as fee-rules.ts.
-      const byLevel = new Map<ClassLevel, Prisma.MonthlyPaymentGetPayload<{ include: { student: { include: { class: true } } } }>[]>();
+      // Group by (class level, Ethiopian year, month) so each income row still
+      // maps to one class level for one specific month.
+      const byLevelMonth = new Map<
+        string,
+        { level: ClassLevel; year: number; month: string; rows: Prisma.MonthlyPaymentGetPayload<{ include: { student: { include: { class: true } } } }>[] }
+      >();
       for (const p of payments) {
-        const level = p.student.class.level;
-        const bucket = byLevel.get(level) ?? [];
-        bucket.push(p);
-        byLevel.set(level, bucket);
+        const key = `${p.student.class.level}:${p.ethiopianYear}:${p.month}`;
+        const bucket = byLevelMonth.get(key) ?? {
+          level: p.student.class.level,
+          year: p.ethiopianYear,
+          month: p.month,
+          rows: [],
+        };
+        bucket.rows.push(p);
+        byLevelMonth.set(key, bucket);
       }
 
       const createdRows = [];
 
-      for (const [level, rows] of byLevel) {
+      for (const { level, year: rowYear, month: rowMonth, rows } of byLevelMonth.values()) {
         const total = Math.round(
           rows.reduce((sum, p) => sum + Number(p.amount), 0) * 100,
         ) / 100;
 
-        const referenceNumber = `STUDENT_FEES:${level}:${year}:${monthEnum}:${batchTimestamp}`;
+        const referenceNumber = `STUDENT_FEES:${level}:${rowYear}:${rowMonth}:${batchTimestamp}`;
+
+        const { newBalance } = await this.ledger.apply(tx, account.id, total, 'IN');
 
         const income = await tx.income.create({
           data: {
@@ -239,9 +320,10 @@ export class IncomeService {
             category: 'STUDENT_FEES',
             sourceType: 'STUDENT_FEE',
             paymentMethod: 'CASH',
-            description: `Class ${this.classLevelLabel(level)} fees — ${monthLabel(monthEnum)} ${year}`,
+            description: `Class ${this.classLevelLabel(level)} fees — ${monthLabel(rowMonth as EthiopianMonth)} ${rowYear}`,
             referenceNumber,
             accountId: account.id,
+            runningBalance: newBalance,
             recordedById,
           },
         });
@@ -255,6 +337,8 @@ export class IncomeService {
         createdRows.push({
           classLevel: level,
           classLabel: this.classLevelLabel(level),
+          ethiopianYear: rowYear,
+          month: rowMonth,
           studentCount: rows.length,
           amount: total,
           incomeId: income.id,
@@ -262,9 +346,6 @@ export class IncomeService {
       }
 
       return {
-        ethiopianYear: year,
-        month: monthEnum,
-        monthLabel: monthLabel(monthEnum),
         batchTimestamp,
         alreadyRecorded: createdRows.length === 0,
         results: createdRows,

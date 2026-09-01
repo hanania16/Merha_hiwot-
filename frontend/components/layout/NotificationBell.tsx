@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bell } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useLang } from '@/lib/i18n';
+import { formatEthiopianDateFromGregorian } from '@/lib/ethiopian-calendar';
 
 interface NotificationItem {
   id: string;
@@ -14,6 +16,7 @@ interface NotificationItem {
 }
 
 export function NotificationBell() {
+  const { t } = useLang();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -69,16 +72,16 @@ export function NotificationBell() {
       {open && (
         <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 max-w-[320px] card p-0 overflow-hidden shadow-lg z-50">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <p className="text-sm font-semibold text-ink">Notifications</p>
+            <p className="text-sm font-semibold text-ink">{t('notifications')}</p>
             {unreadCount > 0 && (
               <button className="text-xs text-gold font-medium hover:underline" onClick={markAllRead}>
-                Mark all read
+                {t('markAllRead')}
               </button>
             )}
           </div>
           <div className="max-h-96 overflow-y-auto">
             {items.length === 0 && (
-              <p className="text-sm text-slate text-center py-8">No notifications yet.</p>
+              <p className="text-sm text-slate text-center py-8">{t('noNotifications')}</p>
             )}
             {items.map((n) => (
               <button
@@ -93,7 +96,7 @@ export function NotificationBell() {
                   <div>
                     <p className="text-sm font-medium text-ink">{n.title}</p>
                     <p className="text-xs text-slate mt-0.5">{n.message}</p>
-                    <p className="text-[10px] text-slate/70 mt-1">{new Date(n.createdAt).toLocaleString()}</p>
+                    <p className="text-[10px] text-slate/70 mt-1">{formatEthiopianDateFromGregorian(new Date(n.createdAt))}, {new Date(n.createdAt).toLocaleTimeString()}</p>
                   </div>
                 </div>
               </button>

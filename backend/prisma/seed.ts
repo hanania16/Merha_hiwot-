@@ -17,11 +17,6 @@ async function main() {
     update: {},
     create: { fullName: 'Finance Officer', email: 'finance@marhahiwot.org', passwordHash, role: Role.FINANCE_OFFICER },
   });
-  await prisma.user.upsert({
-    where: { email: 'attendance@marhahiwot.org' },
-    update: {},
-    create: { fullName: 'Attendance Officer', email: 'attendance@marhahiwot.org', passwordHash, role: Role.ATTENDANCE_OFFICER },
-  });
 
   await prisma.classGroup.upsert({
     where: { level: ClassLevel.CLASS_1_3 }, update: {},
@@ -39,7 +34,6 @@ async function main() {
   console.log('Base data ready. Login with:');
   console.log('  admin@marhahiwot.org / Password123!');
   console.log('  finance@marhahiwot.org / Password123!');
-  console.log('  attendance@marhahiwot.org / Password123!');
 }
 
 main()

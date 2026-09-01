@@ -22,30 +22,25 @@ export class StudentsController {
     return this.studentsService.findClasses();
   }
 
-  @Get('inactive')
-  findInactive() {
-    return this.studentsService.findInactiveStudents();
-  }
-
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.studentsService.findOne(id);
   }
 
-  // Write access: Attendance Officer / Administrator only — Finance never creates students
-  @Roles(Role.ATTENDANCE_OFFICER, Role.ADMINISTRATOR)
+  // Write access: Administrator and Finance Officer
+  @Roles(Role.ADMINISTRATOR, Role.FINANCE_OFFICER)
   @Post()
   create(@Body() dto: CreateStudentDto, @CurrentUser() user: CurrentUserPayload) {
     return this.studentsService.create(dto, user.userId);
   }
 
-  @Roles(Role.ATTENDANCE_OFFICER, Role.ADMINISTRATOR)
+  @Roles(Role.ADMINISTRATOR)
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateStudentDto, @CurrentUser() user: CurrentUserPayload) {
     return this.studentsService.update(id, dto, user.userId);
   }
 
-  @Roles(Role.ATTENDANCE_OFFICER, Role.ADMINISTRATOR)
+  @Roles(Role.ADMINISTRATOR)
   @Patch(':id/status')
   setStatus(
     @Param('id') id: string,
@@ -55,7 +50,7 @@ export class StudentsController {
     return this.studentsService.setStatus(id, status, user.userId);
   }
 
-  @Roles(Role.ATTENDANCE_OFFICER, Role.ADMINISTRATOR)
+  @Roles(Role.ADMINISTRATOR)
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.studentsService.remove(id, user.userId);

@@ -9,8 +9,11 @@ export class CreateIncomeDto {
   @Min(0.01)
   amount: number;
 
+  // Deprecated: kept for backward compatibility but no longer sent by the
+  // form. When omitted the service derives a default from `sourceType`.
+  @IsOptional()
   @IsEnum(IncomeCategory)
-  category: IncomeCategory;
+  category?: IncomeCategory;
 
   @IsEnum(IncomeSourceType)
   sourceType: IncomeSourceType;
@@ -18,8 +21,17 @@ export class CreateIncomeDto {
   @IsEnum(PaymentMethod)
   paymentMethod: PaymentMethod;
 
+  @IsOptional()
   @IsUUID()
-  accountId: string;
+  accountId?: string;
+
+  @IsOptional()
+  @IsString()
+  senderName?: string;
+
+  @IsOptional()
+  @IsString()
+  senderAccountNumber?: string;
 
   @IsOptional()
   @IsString()

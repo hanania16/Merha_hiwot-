@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ApprovalDecision } from '@prisma/client';
+import { ApprovalDecision, ExpenseCategory } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { FinanceAuditService } from '../../services/financeAuditService';
@@ -39,6 +39,9 @@ export class ExpenseService {
   }
 
   async create(dto: CreateExpenseDto, userId: string) {
+    if (dto.category === ExpenseCategory.MISCELLANEOUS && !dto.description?.trim()) {
+      throw new BadRequestException('Description is required when expense type is Others (MISCELLANEOUS)');
+    }
     // Balance update (Account.currentBalance) + the ledger row (runningBalance)
     // commit atomically under a row lock — no path can update one without the
     // other. Corrections are append-only REVERSAL entries, never edits/deletes.

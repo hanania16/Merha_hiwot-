@@ -2,6 +2,7 @@ import * as ExcelJS from 'exceljs';
 import { Response } from 'express';
 import { LABELS, WARN_MARK } from './audit-export.constants';
 import { AuditReport } from './audit-report.types';
+import { enumLabel } from './export-labels';
 import { ETHIOPIAN_MONTHS, formatEthiopianDate, toEthiopian } from '../../common/constants/ethiopian-calendar';
 
 const GOLD = 'FFD4AF37';
@@ -98,12 +99,12 @@ function addSummarySheet(workbook: ExcelJS.Workbook, report: AuditReport, genera
   }
 }
 
-export async function exportAuditExcel(res: Response, report: AuditReport, filename: string, generatedBy: string) {
+export async function exportAuditExcel(res: Response, report: AuditReport, filename: string, generatedBy: string, lang: 'en' | 'am' = 'am') {
   const workbook = new ExcelJS.Workbook();
   addSummarySheet(workbook, report, generatedBy);
 
   const incomeRows: SheetRows = Object.entries(report.incomeBySourceType).map(([source, g]) => [
-    source,
+    enumLabel(source, lang),
     g.count,
     g.total,
     report.summary.totalIncome ? Math.round((g.total / report.summary.totalIncome) * 1000) / 10 : 0,
@@ -119,9 +120,21 @@ export async function exportAuditExcel(res: Response, report: AuditReport, filen
     incomeRows,
     { currencyCols: [3] },
   );
+  if (report.lastStudentFeeBatchTime && report.incomeBySourceType['STUDENT_FEE']) {
+    const incomeSheet = workbook.getWorksheet(LABELS.incomeSummary)!;
+    const when = `${formatEthiopianDate(report.lastStudentFeeBatchTime)} / ${report.lastStudentFeeBatchTime.toISOString().slice(0, 10)}`;
+    const note =
+      lang === 'am'
+        ? `${LABELS.studentFeeBatchNote} ${when} ${LABELS.studentFeeBatchNotedAt}`
+        : `Student fee totals current as of ${when} (last daily batch)`;
+    const noteRow = incomeSheet.addRow([]);
+    noteRow.getCell(1).value = note;
+    noteRow.getCell(1).font = { italic: true, color: { argb: 'FF6B7280' } };
+    incomeSheet.mergeCells(noteRow.number, 1, noteRow.number, 4);
+  }
 
   const expenseRows: SheetRows = Object.entries(report.expenseByCategory).map(([category, g]) => [
-    category,
+    enumLabel(category, lang),
     g.count,
     g.total,
     report.summary.totalExpense ? Math.round((g.total / report.summary.totalExpense) * 1000) / 10 : 0,
@@ -185,7 +198,7 @@ export async function exportAuditExcel(res: Response, report: AuditReport, filen
 
   const missingRows: SheetRows = report.missingReceipts.records.map((r) => [
     isoDate(r.date),
-    r.sourceType,
+    enumLabel(r.sourceType, lang),
     r.amount,
     r.status,
   ]);
@@ -202,8 +215,8 @@ export async function exportAuditExcel(res: Response, report: AuditReport, filen
   );
 
   const pendingRows: SheetRows = [
-    ...report.pendingApprovals.income.map((i) => [isoDate(i.date), LABELS.income, i.sourceType, i.amount]),
-    ...report.pendingApprovals.expense.map((e) => [isoDate(e.date), LABELS.expense, e.category, e.amount]),
+    ...report.pendingApprovals.income.map((i) => [isoDate(i.date), LABELS.income, enumLabel(i.sourceType, lang), i.amount]),
+    ...report.pendingApprovals.expense.map((e) => [isoDate(e.date), LABELS.expense, enumLabel(e.category, lang), e.amount]),
   ];
   styleSheet(
     workbook.addWorksheet(LABELS.pendingApprovals),

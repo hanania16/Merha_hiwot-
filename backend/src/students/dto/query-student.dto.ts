@@ -8,7 +8,6 @@ export class QueryStudentDto {
   @IsOptional() @IsEnum(Gender) gender?: Gender;
   @IsOptional() @IsEnum(StudentStatus) status?: StudentStatus;
   @IsOptional() @IsString() feeStatus?: 'PAID' | 'UNPAID' | 'PARTIAL';
-  @IsOptional() @IsString() eligibleToServe?: 'true';
   @IsOptional() @IsString() registeredFrom?: string;
   @IsOptional() @IsString() registeredTo?: string;
 

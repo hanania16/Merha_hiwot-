@@ -11,6 +11,8 @@ export class UpdateIncomeDto {
   @Min(0.01)
   amount?: number;
 
+  // Deprecated: kept for backward compatibility but no longer sent by the
+  // form. When omitted the service derives a default from `sourceType`.
   @IsOptional()
   @IsEnum(IncomeCategory)
   category?: IncomeCategory;
@@ -26,6 +28,14 @@ export class UpdateIncomeDto {
   @IsOptional()
   @IsUUID()
   accountId?: string;
+
+  @IsOptional()
+  @IsString()
+  senderName?: string;
+
+  @IsOptional()
+  @IsString()
+  senderAccountNumber?: string;
 
   @IsOptional()
   @IsString()

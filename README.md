@@ -27,10 +27,10 @@ A two-dashboard Church Management System for an Ethiopian Orthodox Sunday School
 
 **Finance — fee rules engine** (`backend/src/common/constants/fee-rules.ts`)
 - Classes 1-3 and 4-6: 30 Birr/month. Classes 7-12: 50 Birr/month. Working members: 2% of monthly salary.
-- Late payment rule: first 7 days of the Ethiopian month are grace period; after that, +10 Birr every 3 days, computed automatically.
-- **Student Fee Management** now shows outstanding balance (current month + previous unpaid months + penalty) per student.
-- **Record Payment** shows the full breakdown before saving and lets you include/exclude the current penalty.
-- **Analytics** adds a payment-status breakdown: not paid, overdue, paid today, paid this month, paid late — plus the existing collection-rate and trend charts.
+- **Late payments**: there is **no automatic late-payment penalty**. Paying a month late simply means previously-unpaid months are recorded at their normal base fee (`penaltyAmount` is always **0**), so a student who pays late just owes the standard fee for each month they missed. Month recording only runs inside the fee-tracking window (Nehase 2018 onward); any month before that is rejected.
+- **Student Fee Management** shows outstanding balance per student = unpaid months × monthly base fee (no penalty).
+- **Record Payment** shows the outstanding-balance breakdown before saving (current month base + previous unpaid months) and lets you select months to pay plus a payment method — **Cash**, **Bank Transfer**, or **Telebirr Transfer**. Bank Transfer records the **account owner name**; Telebirr Transfer records the **phone number**; Cash needs no extra field.
+- **Analytics** adds a payment-status breakdown (`notPaid`, `paidToday`, `paidThisMonth`, `totalActiveStudents`) plus the existing collection-rate and trend charts.
 
 **Notification bell** (top-right of every dashboard)
 - Unified `/notifications` feed, filtered per role (Administrators see everything).

@@ -4,6 +4,7 @@ import PDFDocument = require('pdfkit');
 import { Response } from 'express';
 import { LABELS, WARN_MARK } from './audit-export.constants';
 import { AuditReport } from './audit-report.types';
+import { enumLabel } from './export-labels';
 import { ETHIOPIAN_MONTHS, formatEthiopianDate, toEthiopian } from '../../common/constants/ethiopian-calendar';
 
 const FONT_REG = 'Ethiopic';
@@ -259,19 +260,25 @@ function reportKindPeriodGreg(report: AuditReport): string {
 
 const pct = (part: number, total: number) => (total ? `${((part / total) * 100).toFixed(1)}%` : '0.0%');
 
-function drawIncomeSummary(doc: PDFKit.PDFDocument, report: AuditReport) {
+function drawIncomeSummary(doc: PDFKit.PDFDocument, report: AuditReport, lang: 'en' | 'am') {
   sectionTitle(doc, LABELS.incomeSummary);
   const entries = Object.entries(report.incomeBySourceType);
   if (entries.length === 0) return noneLine(doc);
-  const rows = entries.map(([source, g]) => [source, String(g.count), `${money(g.total)} ETB`, pct(g.total, report.summary.totalIncome)]);
+  const rows = entries.map(([source, g]) => [enumLabel(source, lang), String(g.count), `${money(g.total)} ETB`, pct(g.total, report.summary.totalIncome)]);
   drawTable(doc, [150, 60, 150, 120], [LABELS.income, 'ብዛት', 'ጠቅላላ', '%'], rows);
+  if (report.lastStudentFeeBatchTime && report.incomeBySourceType['STUDENT_FEE']) {
+    const when = `${formatEthiopianDate(report.lastStudentFeeBatchTime)} / ${report.lastStudentFeeBatchTime.toISOString().slice(0, 10)}`;
+    drawText(doc, `${lang === 'am' ? LABELS.studentFeeBatchNote + ' ' + when + ' ' + LABELS.studentFeeBatchNotedAt : `Student fee totals current as of ${when} (last daily batch)`}`, MARGIN, doc.y, PAGE_WIDTH - MARGIN * 2, { size: 8.5, color: GRAY });
+    doc.y += lineHeightOf(8.5);
+    doc.moveDown(0.2);
+  }
 }
 
-function drawExpenseSummary(doc: PDFKit.PDFDocument, report: AuditReport) {
+function drawExpenseSummary(doc: PDFKit.PDFDocument, report: AuditReport, lang: 'en' | 'am') {
   sectionTitle(doc, LABELS.expenseSummary);
   const entries = Object.entries(report.expenseByCategory);
   if (entries.length === 0) return noneLine(doc);
-  const rows = entries.map(([category, g]) => [category, String(g.count), `${money(g.total)} ETB`, pct(g.total, report.summary.totalExpense)]);
+  const rows = entries.map(([category, g]) => [enumLabel(category, lang), String(g.count), `${money(g.total)} ETB`, pct(g.total, report.summary.totalExpense)]);
   drawTable(doc, [150, 60, 150, 120], [LABELS.expense, 'ብዛት', 'ጠቅላላ', '%'], rows);
 }
 
@@ -306,17 +313,17 @@ function drawDiscrepancies(doc: PDFKit.PDFDocument, report: AuditReport) {
   drawTable(doc, [80, 80, 80, 80, 110, 100], ['ሂሳብ', 'የሚጠበቅ', 'ተጨባጭ', 'ልዩነት', 'ሁኔታ', 'ማስታወሻ'], rows);
 }
 
-function drawMissingReceipts(doc: PDFKit.PDFDocument, report: AuditReport) {
+function drawMissingReceipts(doc: PDFKit.PDFDocument, report: AuditReport, lang: 'en' | 'am') {
   sectionTitle(doc, LABELS.missingReceipts);
   if (report.missingReceipts.total === 0) return noneLine(doc);
   drawText(doc, `${LABELS.income}: ${report.missingReceipts.total}`, MARGIN, doc.y, PAGE_WIDTH - MARGIN * 2, { size: 9 });
   doc.y += lineHeightOf(9);
   doc.moveDown(0.3);
-  const rows = report.missingReceipts.records.map((r) => [isoDate(r.date), r.sourceType, `${money(r.amount)} ETB`, r.status]);
+  const rows = report.missingReceipts.records.map((r) => [isoDate(r.date), enumLabel(r.sourceType, lang), `${money(r.amount)} ETB`, r.status]);
   drawTable(doc, [110, 140, 130, 120], ['ቀን', 'ምንጭ', 'መጠን', 'ሁኔታ'], rows);
 }
 
-function drawPendingApprovals(doc: PDFKit.PDFDocument, report: AuditReport) {
+function drawPendingApprovals(doc: PDFKit.PDFDocument, report: AuditReport, lang: 'en' | 'am') {
   sectionTitle(doc, LABELS.pendingApprovals);
   const { income, expense } = report.pendingApprovals;
   if (income.length === 0 && expense.length === 0) return noneLine(doc);
@@ -324,8 +331,8 @@ function drawPendingApprovals(doc: PDFKit.PDFDocument, report: AuditReport) {
   doc.y += lineHeightOf(9);
   doc.moveDown(0.3);
   const rows: Row[] = [
-    ...income.map((i) => [isoDate(i.date), LABELS.income, i.sourceType, `${money(i.amount)} ETB`]),
-    ...expense.map((e) => [isoDate(e.date), LABELS.expense, e.category, `${money(e.amount)} ETB`]),
+    ...income.map((i) => [isoDate(i.date), LABELS.income, enumLabel(i.sourceType, lang), `${money(i.amount)} ETB`]),
+    ...expense.map((e) => [isoDate(e.date), LABELS.expense, enumLabel(e.category, lang), `${money(e.amount)} ETB`]),
   ];
   drawTable(doc, [110, 90, 140, 130], ['ቀን', 'ዓይነት', 'ምድብ', 'መጠን'], rows);
 }
@@ -360,7 +367,7 @@ function drawSummaryFooter(doc: PDFKit.PDFDocument, report: AuditReport) {
   }
 }
 
-export async function exportAuditPdf(res: Response, report: AuditReport, filename: string, generatedBy: string) {
+export async function exportAuditPdf(res: Response, report: AuditReport, filename: string, generatedBy: string, lang: 'en' | 'am' = 'am') {
   if (!fs.existsSync(FONT_REG_PATH) || !fs.existsSync(FONT_BOLD_PATH)) {
     throw new Error('Ethiopic fonts not found under backend/assets/fonts/');
   }
@@ -374,12 +381,12 @@ export async function exportAuditPdf(res: Response, report: AuditReport, filenam
   doc.registerFont(FONT_BOLD, FONT_BOLD_PATH);
 
   drawHeader(doc, report, generatedBy);
-  drawIncomeSummary(doc, report);
-  drawExpenseSummary(doc, report);
+  drawIncomeSummary(doc, report, lang);
+  drawExpenseSummary(doc, report, lang);
   drawAccountBalances(doc, report);
   drawDiscrepancies(doc, report);
-  drawMissingReceipts(doc, report);
-  drawPendingApprovals(doc, report);
+  drawMissingReceipts(doc, report, lang);
+  drawPendingApprovals(doc, report, lang);
   drawAdjustments(doc, report);
   drawSummaryFooter(doc, report);
 

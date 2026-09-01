@@ -14,6 +14,7 @@ export async function exportToExcel(
   filename: string,
   columns: { header: string; key: string; width?: number }[],
   rows: Record<string, unknown>[],
+  note?: string,
 ) {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Report');
@@ -21,6 +22,12 @@ export async function exportToExcel(
   sheet.getRow(1).font = { bold: true };
   sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD4AF37' } };
   rows.forEach((r) => sheet.addRow(r));
+  if (note) {
+    const noteRow = sheet.addRow([]);
+    noteRow.getCell(1).value = note;
+    noteRow.getCell(1).font = { italic: true, color: { argb: 'FF6B7280' } };
+    sheet.mergeCells(noteRow.number, 1, noteRow.number, columns.length);
+  }
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}.xlsx"`);

@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { EthiopianMonth, PaymentStatus, Prisma } from '@prisma/client';
+import { EthiopianMonth, PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { ETHIOPIAN_MONTHS, currentEthiopianYear } from '../../common/constants/ethiopian-calendar';
@@ -82,6 +82,9 @@ export class StudentFeesService {
         status: overallStatus,
         unpaidMonths: unpaidCount,
         lastPaymentDate: lastPaid?.paidDate ?? null,
+        lastPaymentMethod: lastPaid?.paymentMethod ?? null,
+        lastPaymentAccountOwner: lastPaid?.accountOwner ?? null,
+        lastPaymentPhoneNumber: lastPaid?.phoneNumber ?? null,
         lastPaidMonth: lastPaid?.month ?? null,
         lastPaidYear: lastPaid ? lastPaid.ethiopianYear : null,
         monthlyBaseFee: base,
@@ -148,6 +151,25 @@ export class StudentFeesService {
     });
     const amountPerMonth = dto.amountPerMonth ?? base;
 
+    const paymentMethod = dto.paymentMethod ?? PaymentMethod.CASH;
+    if (paymentMethod === PaymentMethod.BANK_TRANSFER && !dto.accountOwner?.trim()) {
+      throw new BadRequestException('Account owner name is required for bank transfer payments');
+    }
+    if (paymentMethod === PaymentMethod.TELEBIRR_TRANSFER && !dto.phoneNumber?.trim()) {
+      throw new BadRequestException('Phone number is required for Telebirr transfer payments');
+    }
+
+    for (const month of dto.months) {
+      if (month === EthiopianMonth.PAGUME) {
+        throw new BadRequestException('Pagume (the 13th month) is not a chargeable fee month — no payment can be recorded for it');
+      }
+      if (!isWithinFeeTrackingWindow(dto.ethiopianYear, monthOrder(month))) {
+        throw new BadRequestException(
+          `Month ${month} of ${dto.ethiopianYear} is outside the fee tracking window (fee tracking starts at Nehase ${FEE_TRACKING_START_YEAR})`,
+        );
+      }
+    }
+
     // Payment recording only marks the month PAID/UNPAID — no Income row is
     // created here. Class-level income is aggregated later by the monthly batch
     // job (recordMonthlyClassIncome), which also stamps includedInIncomeAt.
@@ -159,6 +181,9 @@ export class StudentFeesService {
         ethiopianYear: dto.ethiopianYear,
         month,
         amount: total,
+        paymentMethod,
+        accountOwner: dto.accountOwner ?? null,
+        phoneNumber: dto.phoneNumber ?? null,
         notes: dto.notes,
         userId,
       });
@@ -177,7 +202,7 @@ export class StudentFeesService {
    */
   private async upsertPayment(
     monthlyPayment: Prisma.MonthlyPaymentDelegate,
-    args: { studentId: string; ethiopianYear: number; month: EthiopianMonth; amount: number; notes?: string; userId: string },
+    args: { studentId: string; ethiopianYear: number; month: EthiopianMonth; amount: number; paymentMethod?: PaymentMethod; accountOwner?: string | null; phoneNumber?: string | null; notes?: string; userId: string },
   ): Promise<{ payment: Prisma.MonthlyPaymentGetPayload<{}>; newlyPaid: boolean }> {
     const existing = await monthlyPayment.findUnique({
       where: {
@@ -202,6 +227,9 @@ export class StudentFeesService {
         baseAmount: args.amount,
         penaltyAmount: 0,
         amount: args.amount,
+        paymentMethod: args.paymentMethod,
+        accountOwner: args.accountOwner ?? null,
+        phoneNumber: args.phoneNumber ?? null,
         notes: args.notes,
         paidDate: new Date(),
         recordedById: args.userId,
@@ -214,6 +242,9 @@ export class StudentFeesService {
         baseAmount: args.amount,
         penaltyAmount: 0,
         amount: args.amount,
+        paymentMethod: args.paymentMethod,
+        accountOwner: args.accountOwner ?? null,
+        phoneNumber: args.phoneNumber ?? null,
         notes: args.notes,
         paidDate: new Date(),
         recordedById: args.userId,
@@ -248,6 +279,25 @@ export class StudentFeesService {
       throw new BadRequestException('No active students found in this class level');
     }
 
+    const paymentMethod = dto.paymentMethod ?? PaymentMethod.CASH;
+    if (paymentMethod === PaymentMethod.BANK_TRANSFER && !dto.accountOwner?.trim()) {
+      throw new BadRequestException('Account owner name is required for bank transfer payments');
+    }
+    if (paymentMethod === PaymentMethod.TELEBIRR_TRANSFER && !dto.phoneNumber?.trim()) {
+      throw new BadRequestException('Phone number is required for Telebirr transfer payments');
+    }
+
+    for (const month of dto.months) {
+      if (month === EthiopianMonth.PAGUME) {
+        throw new BadRequestException('Pagume (the 13th month) is not a chargeable fee month — no payment can be recorded for it');
+      }
+      if (!isWithinFeeTrackingWindow(dto.ethiopianYear, monthOrder(month))) {
+        throw new BadRequestException(
+          `Month ${month} of ${dto.ethiopianYear} is outside the fee tracking window (fee tracking starts at Nehase ${FEE_TRACKING_START_YEAR})`,
+        );
+      }
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const monthResults = [];
 
@@ -272,6 +322,9 @@ export class StudentFeesService {
             ethiopianYear: dto.ethiopianYear,
             month,
             amount,
+            paymentMethod,
+            accountOwner: dto.accountOwner ?? null,
+            phoneNumber: dto.phoneNumber ?? null,
             notes: dto.notes,
             userId,
           });

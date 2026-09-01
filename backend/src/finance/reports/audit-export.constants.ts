@@ -28,6 +28,9 @@ export const LABELS = {
 
   income: 'ገቢ',
   expense: 'ወጪ',
+
+  studentFeeBatchNote: 'የተማሪ ክፍያ ድምር እስከ',
+  studentFeeBatchNotedAt: 'ድረስ ወቅታዊ ነው (በዕለታዊ ቡድን ስራ መሰረት)',
 } as const;
 
 /** Warning marker for discrepancy statuses — ASCII-safe (no ⚠ glyph in the bundled fonts). */

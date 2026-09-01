@@ -6,7 +6,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 const ROLE_VISIBILITY: Record<Role, NotificationType[] | null> = {
   ADMINISTRATOR: null, // null = all types
   FINANCE_OFFICER: ['UNPAID_FEES', 'LARGE_EXPENSE', 'REPORT_READY', 'MISSING_PAYMENT_RECORD', 'WEEKLY_DIGEST'],
-  ATTENDANCE_OFFICER: ['ATTENDANCE_WARNING', 'LONG_ABSENCE', 'UPCOMING_INACTIVE', 'REPORT_READY', 'WEEKLY_DIGEST'],
 };
 
 @Injectable()

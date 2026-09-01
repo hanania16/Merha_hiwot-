@@ -49,9 +49,8 @@ export class FinanceReportsService {
 
   /** Full audit report for a Gregorian [from, to) window derived from an Ethiopian period. */
   private async auditRollup(kind: 'monthly' | 'yearly', from: Date, to: Date) {
-    const [incomes, expenses, accounts, reconsInPeriod, auditLogs] = await Promise.all([
-      this.prisma.income.findMany({
-        where: { date: { gte: from, lt: to } },
+    const [incomes, expenses, accounts, reconsInPeriod, auditLogs, lastStudentFeeBatchTime] = await Promise.all([
+      this.prisma.income.findMany({        where: { date: { gte: from, lt: to } },
         include: {
           account: { select: { id: true, name: true, type: true } },
           student: { select: { id: true, fullName: true, studentCode: true } },
@@ -86,6 +85,7 @@ export class FinanceReportsService {
         include: { changedBy: { select: { fullName: true } } },
         orderBy: { createdAt: 'asc' },
       }),
+      this.prisma.monthlyPayment.aggregate({ _max: { includedInIncomeAt: true } }).then((a) => a._max.includedInIncomeAt ?? null),
     ]);
 
     const approvedIncomes = incomes.filter((i) => i.status === TransactionStatus.APPROVED);
@@ -249,6 +249,7 @@ export class FinanceReportsService {
     return {
       kind,
       period: { from, to },
+      lastStudentFeeBatchTime,
       summary: {
         totalIncome: round2(totalIncome),
         totalExpense: round2(totalExpense),
@@ -289,10 +290,17 @@ export class FinanceReportsService {
     return this.auditRollup('yearly', from, to);
   }
 
+  /** Last time student fees were swept into class-level STUDENT_FEES income (MAX includedInIncomeAt). */
+  private async lastStudentFeeBatchTime(): Promise<Date | null> {
+    const { _max } = await this.prisma.monthlyPayment.aggregate({ _max: { includedInIncomeAt: true } });
+    return _max.includedInIncomeAt ?? null;
+  }
+
   async buildFinancialReport(from: Date, to: Date) {
-    const [incomes, expenses] = await Promise.all([
+    const [incomes, expenses, lastStudentFeeBatchTime] = await Promise.all([
       this.prisma.income.findMany({ where: { date: { gte: from, lte: to } } }),
       this.prisma.expense.findMany({ where: { date: { gte: from, lte: to } } }),
+      this.lastStudentFeeBatchTime(),
     ]);
 
     const totalIncome = incomes.reduce((s, i) => s + Number(i.amount), 0);
@@ -316,6 +324,7 @@ export class FinanceReportsService {
 
     return {
       period: { from, to },
+      lastStudentFeeBatchTime,
       totalIncome,
       totalExpense,
       balance: totalIncome - totalExpense,

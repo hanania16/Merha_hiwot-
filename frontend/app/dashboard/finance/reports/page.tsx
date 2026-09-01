@@ -5,6 +5,7 @@ import { api, downloadUrl } from '@/lib/api';
 import { ETHIOPIAN_MONTHS, currentEthiopianYear, ethiopianTodayISO, formatETB, formatEthiopianDateFromGregorian, monthLabel, toEthiopian } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
+import { useLang } from '@/lib/i18n';
 
 type Tab = 'period' | 'monthly' | 'yearly' | 'history';
 
@@ -17,6 +18,7 @@ interface FinancialReport {
   outstandingFeeMonths: number;
   expenseByCategory: Record<string, number>;
   incomeByCategory: Record<string, number>;
+  lastStudentFeeBatchTime: string | null;
 }
 
 interface ReportSummary {
@@ -34,6 +36,8 @@ interface TransactionRow {
   sourceType?: string;
   amount: number;
   description: string | null;
+  senderName?: string | null;
+  senderAccountNumber?: string | null;
   recordedByName: string | null;
 }
 
@@ -44,6 +48,7 @@ interface ReportData {
   incomeBySourceType: Record<string, { total: number; count: number }>;
   expenseByCategory: Record<string, { total: number; count: number }>;
   transactions: { income: TransactionRow[]; expense: TransactionRow[] };
+  lastStudentFeeBatchTime: string | null;
 }
 
 interface HistoryItem {
@@ -59,18 +64,19 @@ interface HistoryItem {
 const MONTH_OPTIONS = ETHIOPIAN_MONTHS.map((m) => ({ value: m.order, label: m.label }));
 
 export default function ReportsPage() {
+  const { t } = useLang();
   const [tab, setTab] = useState<Tab>('period');
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'period', label: 'Period Report' },
-    { key: 'monthly', label: 'Monthly' },
-    { key: 'yearly', label: 'Yearly' },
-    { key: 'history', label: 'Report History' },
+    { key: 'period', label: t('periodReport') },
+    { key: 'monthly', label: t('monthly') },
+    { key: 'yearly', label: t('yearly') },
+    { key: 'history', label: t('reportHistory') },
   ];
 
   return (
     <div>
-      <Topbar title="Financial Reports" subtitle="Daily, monthly, and yearly reports with saved history" />
+      <Topbar title={t('financialReports')} subtitle={t('financialReportsSub')} />
 
       <div className="flex flex-wrap gap-2 mb-6">
         {tabs.map((t) => (
@@ -97,6 +103,7 @@ export default function ReportsPage() {
 /* ---------------- Period report (custom from/to) ---------------- */
 
 function PeriodReport() {
+  const { t, lang } = useLang();
   const [from, setFrom] = useState(ethiopianTodayISO());
   const [to, setTo] = useState(ethiopianTodayISO());
   const [report, setReport] = useState<FinancialReport | null>(null);
@@ -116,21 +123,21 @@ function PeriodReport() {
     <div>
       <div className="card p-4 mb-6 flex flex-wrap items-end gap-3">
         <div>
-          <label className="label">From</label>
+          <label className="label">{t('from')}</label>
           <EthiopianDatePicker value={from} onChange={(d) => setFrom(d)} />
         </div>
         <div>
-          <label className="label">To</label>
+          <label className="label">{t('to')}</label>
           <EthiopianDatePicker value={to} onChange={(d) => setTo(d)} />
         </div>
         <button className="btn-outline" onClick={generate} disabled={loading}>
-          {loading ? 'Generating…' : 'Generate Report'}
+          {loading ? t('generating') : t('generateReport')}
         </button>
-        <a className="btn-gold" href={downloadUrl(`/finance/reports/financial/export/pdf?from=${from}&to=${to}`)} target="_blank" rel="noreferrer">
-          Export PDF
+        <a className="btn-gold" href={downloadUrl(`/finance/reports/financial/export/pdf?from=${from}&to=${to}&lang=${lang}`)} target="_blank" rel="noreferrer">
+          {t('exportPdf')}
         </a>
-        <a className="btn-outline" href={downloadUrl(`/finance/reports/financial/export/excel?from=${from}&to=${to}`)} target="_blank" rel="noreferrer">
-          Export Excel
+        <a className="btn-outline" href={downloadUrl(`/finance/reports/financial/export/excel?from=${from}&to=${to}&lang=${lang}`)} target="_blank" rel="noreferrer">
+          {t('exportExcel')}
         </a>
       </div>
 
@@ -138,57 +145,60 @@ function PeriodReport() {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div className="card p-5">
-              <p className="text-xs text-slate uppercase">Total Income</p>
+              <p className="text-xs text-slate uppercase">{t('totalIncome')}</p>
               <p className="text-2xl font-semibold text-status-present mt-2">{formatETB(report.totalIncome)}</p>
             </div>
             <div className="card p-5">
-              <p className="text-xs text-slate uppercase">Total Expenses</p>
+              <p className="text-xs text-slate uppercase">{t('totalExpenses')}</p>
               <p className="text-2xl font-semibold text-status-absent mt-2">{formatETB(report.totalExpense)}</p>
             </div>
             <div className="card p-5">
-              <p className="text-xs text-slate uppercase">Balance</p>
+              <p className="text-xs text-slate uppercase">{t('balance')}</p>
               <p className="text-2xl font-semibold text-gold mt-2">{formatETB(report.balance)}</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div className="card p-5">
-              <p className="text-xs text-slate uppercase">Collection Rate</p>
+              <p className="text-xs text-slate uppercase">{t('collectionRate')}</p>
               <p className="text-xl font-semibold text-ink mt-2">{report.collectionRate}%</p>
             </div>
             <div className="card p-5">
-              <p className="text-xs text-slate uppercase">Donations</p>
+              <p className="text-xs text-slate uppercase">{t('donations')}</p>
               <p className="text-xl font-semibold text-ink mt-2">{formatETB(report.donations)}</p>
             </div>
             <div className="card p-5">
-              <p className="text-xs text-slate uppercase">Outstanding Fee-Months</p>
+              <p className="text-xs text-slate uppercase">{t('outstandingFeeMonths')}</p>
               <p className="text-xl font-semibold text-ink mt-2">{report.outstandingFeeMonths}</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <div className="card p-6">
-              <h2 className="text-sm font-semibold text-ink mb-4">Incomes by Category</h2>
+              <h2 className="text-sm font-semibold text-ink mb-4">{t('incomesByCategory')}</h2>
               <table className="table-base">
-                <thead><tr><th>Category</th><th className="text-right">Amount</th></tr></thead>
+                <thead><tr><th>{t('category')}</th><th className="text-right">{t('amount')}</th></tr></thead>
                 <tbody>
                   {Object.entries(report.incomeByCategory).map(([cat, amt]) => (
                     <tr key={cat}>
-                      <td>{cat.replace(/_/g, ' ')}</td>
+                      <td>{t(cat)}</td>
                       <td className="text-right">{formatETB(Number(amt))}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              {report.lastStudentFeeBatchTime && report.incomeByCategory['STUDENT_FEES'] != null && (
+                <StudentFeesBatchNote when={report.lastStudentFeeBatchTime} />
+              )}
             </div>
             <div className="card p-6">
-              <h2 className="text-sm font-semibold text-ink mb-4">Expenses by Category</h2>
+              <h2 className="text-sm font-semibold text-ink mb-4">{t('expensesByCategory')}</h2>
               <table className="table-base">
-                <thead><tr><th>Category</th><th className="text-right">Amount</th></tr></thead>
+                <thead><tr><th>{t('category')}</th><th className="text-right">{t('amount')}</th></tr></thead>
                 <tbody>
                   {Object.entries(report.expenseByCategory).map(([cat, amt]) => (
                     <tr key={cat}>
-                      <td>{cat.replace(/_/g, ' ')}</td>
+                      <td>{t(cat)}</td>
                       <td className="text-right">{formatETB(Number(amt))}</td>
                     </tr>
                   ))}
@@ -205,6 +215,7 @@ function PeriodReport() {
 /* ---------------- Monthly / Yearly on-demand reports ---------------- */
 
 function MonthlyReport() {
+  const { t, lang } = useLang();
   const [year, setYear] = useState(currentEthiopianYear());
   const [month, setMonth] = useState<number>(toEthiopian(new Date()).month);
   const [report, setReport] = useState<ReportData | null>(null);
@@ -225,7 +236,7 @@ function MonthlyReport() {
     setSaving(true);
     try {
       await api.post('/finance/reports/snapshot', { type: 'MONTHLY', year, month });
-      alert('Monthly report saved to history.');
+      alert(t('monthlySaved'));
     } finally {
       setSaving(false);
     }
@@ -237,39 +248,40 @@ function MonthlyReport() {
     <div>
       <div className="card p-4 mb-6 flex flex-wrap items-end gap-3">
         <div>
-          <label className="label">Ethiopian Year</label>
+          <label className="label">{t('ethiopianYearLabel')}</label>
           <input type="number" className="input w-32" value={year} onChange={(e) => setYear(Number(e.target.value))} />
         </div>
         <div>
-          <label className="label">Month</label>
+          <label className="label">{t('month')}</label>
           <select className="input" value={month} onChange={(e) => setMonth(Number(e.target.value))}>
             {MONTH_OPTIONS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
         </div>
         <button className="btn-outline" onClick={generate} disabled={loading}>
-          {loading ? 'Generating…' : 'Generate Monthly Report'}
+          {loading ? t('generating') : t('generateMonthlyReport')}
         </button>
-        <a className="btn-gold" href={downloadUrl(`/finance/reports/monthly/export?year=${year}&month=${month}&format=pdf`)} target="_blank" rel="noreferrer">
-          Export PDF
+        <a className="btn-gold" href={downloadUrl(`/finance/reports/monthly/export?year=${year}&month=${month}&format=pdf&lang=${lang}`)} target="_blank" rel="noreferrer">
+          {t('exportPdf')}
         </a>
-        <a className="btn-outline" href={downloadUrl(`/finance/reports/monthly/export?year=${year}&month=${month}&format=excel`)} target="_blank" rel="noreferrer">
-          Export Excel
+        <a className="btn-outline" href={downloadUrl(`/finance/reports/monthly/export?year=${year}&month=${month}&format=excel&lang=${lang}`)} target="_blank" rel="noreferrer">
+          {t('exportExcel')}
         </a>
         {report && (
           <button className="btn-outline" onClick={saveSnapshot} disabled={saving}>
-            {saving ? 'Saving…' : 'Save to History'}
+            {saving ? t('saving') : t('saveToHistory')}
           </button>
         )}
       </div>
 
       {report && (
-        <ReportDisplay title={`Monthly Report — ${monthLabel(monthEnum)} ${year}`} data={report} />
+        <ReportDisplay title={`${t('monthly')} ${t('reports')} — ${monthLabel(monthEnum)} ${year}`} data={report} />
       )}
     </div>
   );
 }
 
 function YearlyReport() {
+  const { t, lang } = useLang();
   const [year, setYear] = useState(currentEthiopianYear());
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -289,7 +301,7 @@ function YearlyReport() {
     setSaving(true);
     try {
       await api.post('/finance/reports/snapshot', { type: 'YEARLY', year });
-      alert('Yearly report saved to history.');
+      alert(t('yearlySaved'));
     } finally {
       setSaving(false);
     }
@@ -299,26 +311,26 @@ function YearlyReport() {
     <div>
       <div className="card p-4 mb-6 flex flex-wrap items-end gap-3">
         <div>
-          <label className="label">Ethiopian Year</label>
+          <label className="label">{t('ethiopianYearLabel')}</label>
           <input type="number" className="input w-32" value={year} onChange={(e) => setYear(Number(e.target.value))} />
         </div>
         <button className="btn-outline" onClick={generate} disabled={loading}>
-          {loading ? 'Generating…' : 'Generate Yearly Report'}
+          {loading ? t('generating') : t('generateYearlyReport')}
         </button>
-        <a className="btn-gold" href={downloadUrl(`/finance/reports/yearly/export?year=${year}&format=pdf`)} target="_blank" rel="noreferrer">
-          Export PDF
+        <a className="btn-gold" href={downloadUrl(`/finance/reports/yearly/export?year=${year}&format=pdf&lang=${lang}`)} target="_blank" rel="noreferrer">
+          {t('exportPdf')}
         </a>
-        <a className="btn-outline" href={downloadUrl(`/finance/reports/yearly/export?year=${year}&format=excel`)} target="_blank" rel="noreferrer">
-          Export Excel
+        <a className="btn-outline" href={downloadUrl(`/finance/reports/yearly/export?year=${year}&format=excel&lang=${lang}`)} target="_blank" rel="noreferrer">
+          {t('exportExcel')}
         </a>
         {report && (
           <button className="btn-outline" onClick={saveSnapshot} disabled={saving}>
-            {saving ? 'Saving…' : 'Save to History'}
+            {saving ? t('saving') : t('saveToHistory')}
           </button>
         )}
       </div>
 
-      {report && <ReportDisplay title={`Yearly Report — ${year}`} data={report} />}
+      {report && <ReportDisplay title={`${t('yearly')} ${t('reports')} — ${year}`} data={report} />}
     </div>
   );
 }
@@ -326,6 +338,7 @@ function YearlyReport() {
 /* ---------------- Report History ---------------- */
 
 function ReportHistory() {
+  const { t } = useLang();
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<HistoryItem & { data?: ReportData } | null>(null);
@@ -365,13 +378,13 @@ function ReportHistory() {
         <table className="table-base">
           <thead>
             <tr>
-              <th>Type</th>
-              <th>Period</th>
-              <th className="text-right">Income</th>
-              <th className="text-right">Expense</th>
-              <th className="text-right hidden md:table-cell">Net</th>
-              <th className="hidden md:table-cell">Generated</th>
-              <th className="text-right">Actions</th>
+              <th>{t('typeLabel')}</th>
+              <th>{t('period')}</th>
+              <th className="text-right">{t('income')}</th>
+              <th className="text-right">{t('expense')}</th>
+              <th className="text-right hidden md:table-cell">{t('net')}</th>
+              <th className="hidden md:table-cell">{t('generated')}</th>
+              <th className="text-right">{t('actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -379,26 +392,26 @@ function ReportHistory() {
               <tr key={item.id}>
                 <td>
                   <span className={`text-xs font-semibold px-2 py-1 rounded ${item.type === 'MONTHLY' ? 'bg-gold/15 text-gold' : 'bg-status-present/15 text-status-present'}`}>
-                    {item.type}
+                    {t(item.type)}
                   </span>
                 </td>
                 <td>
                   {item.type === 'MONTHLY'
                     ? `${monthLabel(item.month ?? '')} ${item.ethiopianYear}`
-                    : `Year ${item.ethiopianYear}`}
+                    : t('yearN', { year: item.ethiopianYear })}
                 </td>
                 <td className="text-right">{formatETB(Number(item.summary?.totalIncome ?? 0))}</td>
                 <td className="text-right">{formatETB(Number(item.summary?.totalExpense ?? 0))}</td>
                 <td className="text-right hidden md:table-cell">{formatETB(Number(item.summary?.net ?? 0))}</td>
                 <td className="hidden md:table-cell">{formatEthiopianDateFromGregorian(new Date(item.createdAt))}</td>
                 <td className="text-right">
-                  <button className="btn-outline text-xs px-3 py-1 mr-2" onClick={() => openItem(item)}>View</button>
-                  <button className="text-xs text-red-500" onClick={() => removeItem(item.id)} disabled={deleting}>Delete</button>
+                  <button className="btn-outline text-xs px-3 py-1 mr-2" onClick={() => openItem(item)}>{t('view')}</button>
+                  <button className="text-xs text-red-500" onClick={() => removeItem(item.id)} disabled={deleting}>{t('delete')}</button>
                 </td>
               </tr>
             ))}
             {!loading && items.length === 0 && (
-              <tr><td colSpan={7} className="text-center text-sm text-slate py-8">No saved reports yet. They are generated automatically at the end of each Ethiopian month and year.</td></tr>
+              <tr><td colSpan={7} className="text-center text-sm text-slate py-8">{t('noSavedReports')}</td></tr>
             )}
           </tbody>
         </table>
@@ -409,11 +422,11 @@ function ReportHistory() {
           <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
             <h2 className="text-base font-semibold text-ink">
               {selected.type === 'MONTHLY'
-                ? `${monthLabel(selected.month ?? '')} ${selected.ethiopianYear} — Saved Report`
-                : `Year ${selected.ethiopianYear} — Saved Report`}
+                ? `${monthLabel(selected.month ?? '')} ${selected.ethiopianYear} — ${t('savedReport')}`
+                : `${t('yearN', { year: selected.ethiopianYear })} — ${t('savedReport')}`}
             </h2>
             <div className="flex gap-2">
-              <button className="btn-outline text-sm" onClick={() => setSelected(null)}>Close</button>
+              <button className="btn-outline text-sm" onClick={() => setSelected(null)}>{t('close')}</button>
             </div>
           </div>
           {selected.data && <ReportDisplay title="" data={selected.data} />}
@@ -425,61 +438,76 @@ function ReportHistory() {
 
 /* ---------------- Shared report view ---------------- */
 
+function StudentFeesBatchNote({ when }: { when: string }) {
+  const { t } = useLang();
+  return (
+    <p className="text-xs text-slate mt-3">
+      {t('studentFeesBatchNotePrefix')}{' '}
+      <span className="font-medium">{formatEthiopianDateFromGregorian(new Date(when))}</span>{' '}
+      {t('studentFeesBatchNoteSuffix')}
+    </p>
+  );
+}
+
 function ReportDisplay({ title, data }: { title: string; data: ReportData }) {
+  const { t } = useLang();
   return (
     <div>
       {title && <h2 className="text-base font-semibold text-ink mb-4">{title}</h2>}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="card p-5">
-          <p className="text-xs text-slate uppercase">Total Income</p>
+          <p className="text-xs text-slate uppercase">{t('totalIncome')}</p>
           <p className="text-2xl font-semibold text-status-present mt-2">{formatETB(Number(data.summary?.totalIncome ?? 0))}</p>
-          <p className="text-xs text-slate mt-1">{data.summary?.incomeCount ?? 0} record(s)</p>
+          <p className="text-xs text-slate mt-1">{t('recordS', { n: data.summary?.incomeCount ?? 0 })}</p>
         </div>
         <div className="card p-5">
-          <p className="text-xs text-slate uppercase">Total Expenses</p>
+          <p className="text-xs text-slate uppercase">{t('totalExpenses')}</p>
           <p className="text-2xl font-semibold text-status-absent mt-2">{formatETB(Number(data.summary?.totalExpense ?? 0))}</p>
-          <p className="text-xs text-slate mt-1">{data.summary?.expenseCount ?? 0} record(s)</p>
+          <p className="text-xs text-slate mt-1">{t('recordS', { n: data.summary?.expenseCount ?? 0 })}</p>
         </div>
         <div className="card p-5">
-          <p className="text-xs text-slate uppercase">Net Balance</p>
+          <p className="text-xs text-slate uppercase">{t('netBalance')}</p>
           <p className="text-2xl font-semibold text-gold mt-2">{formatETB(Number(data.summary?.net ?? 0))}</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="card p-6">
-          <h3 className="text-sm font-semibold text-ink mb-4">Income by Source</h3>
+          <h3 className="text-sm font-semibold text-ink mb-4">{t('incomeBySource')}</h3>
           <table className="table-base">
-            <thead><tr><th>Source</th><th className="text-right">Records</th><th className="text-right">Amount</th></tr></thead>
+            <thead><tr><th>{t('source')}</th><th className="text-right">{t('records')}</th><th className="text-right">{t('amount')}</th></tr></thead>
             <tbody>
               {Object.entries(data.incomeBySourceType ?? {}).map(([src, v]) => (
                 <tr key={src}>
-                  <td>{src.replace(/_/g, ' ')}</td>
+                  <td>{t(src)}</td>
                   <td className="text-right">{v.count}</td>
                   <td className="text-right">{formatETB(Number(v.total))}</td>
                 </tr>
               ))}
               {Object.keys(data.incomeBySourceType ?? {}).length === 0 && (
-                <tr><td colSpan={3} className="text-center text-sm text-slate py-6">No income in this period.</td></tr>
+                <tr><td colSpan={3} className="text-center text-sm text-slate py-6">{t('noIncomeThisPeriod')}</td></tr>
               )}
             </tbody>
           </table>
+          {data.lastStudentFeeBatchTime && data.incomeBySourceType?.['STUDENT_FEE'] != null && (
+            <StudentFeesBatchNote when={data.lastStudentFeeBatchTime} />
+          )}
         </div>
         <div className="card p-6">
-          <h3 className="text-sm font-semibold text-ink mb-4">Expenses by Category</h3>
+          <h3 className="text-sm font-semibold text-ink mb-4">{t('expensesByCategory')}</h3>
           <table className="table-base">
-            <thead><tr><th>Category</th><th className="text-right">Records</th><th className="text-right">Amount</th></tr></thead>
+            <thead><tr><th>{t('category')}</th><th className="text-right">{t('records')}</th><th className="text-right">{t('amount')}</th></tr></thead>
             <tbody>
               {Object.entries(data.expenseByCategory ?? {}).map(([cat, v]) => (
                 <tr key={cat}>
-                  <td>{cat.replace(/_/g, ' ')}</td>
+                  <td>{t(cat)}</td>
                   <td className="text-right">{v.count}</td>
                   <td className="text-right">{formatETB(Number(v.total))}</td>
                 </tr>
               ))}
               {Object.keys(data.expenseByCategory ?? {}).length === 0 && (
-                <tr><td colSpan={3} className="text-center text-sm text-slate py-6">No expenses in this period.</td></tr>
+                <tr><td colSpan={3} className="text-center text-sm text-slate py-6">{t('noExpensesThisPeriod')}</td></tr>
               )}
             </tbody>
           </table>
@@ -487,41 +515,48 @@ function ReportDisplay({ title, data }: { title: string; data: ReportData }) {
       </div>
 
       <div className="card overflow-x-auto">
-        <h3 className="text-sm font-semibold text-ink p-6 pb-0">Transactions</h3>
+        <h3 className="text-sm font-semibold text-ink p-6 pb-0">{t('transactions')}</h3>
         <table className="table-base">
           <thead>
             <tr>
-              <th>Date</th>
-              <th>Type</th>
-              <th>Category</th>
-              <th className="hidden md:table-cell">Description</th>
-              <th className="hidden lg:table-cell">Recorded By</th>
-              <th className="text-right">Amount</th>
+              <th>{t('date')}</th>
+              <th>{t('typeLabel')}</th>
+              <th>{t('category')}</th>
+              <th className="hidden md:table-cell">{t('description')}</th>
+              <th className="hidden lg:table-cell">{t('recordedBy')}</th>
+              <th className="text-right">{t('amount')}</th>
             </tr>
           </thead>
           <tbody>
-            {(data.transactions?.income ?? []).map((t) => (
-              <tr key={t.id}>
-                <td>{formatEthiopianDateFromGregorian(new Date(t.date))}</td>
-                <td><span className="text-status-present font-medium">Income</span></td>
-                <td>{t.sourceType ?? t.category?.replace(/_/g, ' ')}</td>
-                <td className="hidden md:table-cell">{t.description ?? '—'}</td>
-                <td className="hidden lg:table-cell">{t.recordedByName ?? '—'}</td>
-                <td className="text-right text-status-present">{formatETB(Number(t.amount))}</td>
+            {(data.transactions?.income ?? []).map((t2) => (
+              <tr key={t2.id}>
+                <td>{formatEthiopianDateFromGregorian(new Date(t2.date))}</td>
+                <td><span className="text-status-present font-medium">{t('income')}</span></td>
+                <td>{t(t2.sourceType ?? t2.category)}</td>
+                <td className="hidden md:table-cell">
+                  {t2.description ?? '—'}
+                  {(t2.senderName || t2.senderAccountNumber) && (
+                    <p className="text-xs text-slate mt-0.5">
+                      {t2.senderName}{t2.senderName && t2.senderAccountNumber ? ' · ' : ''}{t2.senderAccountNumber}
+                    </p>
+                  )}
+                </td>
+                <td className="hidden lg:table-cell">{t2.recordedByName ?? '—'}</td>
+                <td className="text-right text-status-present">{formatETB(Number(t2.amount))}</td>
               </tr>
             ))}
-            {(data.transactions?.expense ?? []).map((t) => (
-              <tr key={t.id}>
-                <td>{formatEthiopianDateFromGregorian(new Date(t.date))}</td>
-                <td><span className="text-status-absent font-medium">Expense</span></td>
-                <td>{t.category?.replace(/_/g, ' ')}</td>
-                <td className="hidden md:table-cell">{t.description ?? '—'}</td>
-                <td className="hidden lg:table-cell">{t.recordedByName ?? '—'}</td>
-                <td className="text-right text-status-absent">{formatETB(Number(t.amount))}</td>
+            {(data.transactions?.expense ?? []).map((t2) => (
+              <tr key={t2.id}>
+                <td>{formatEthiopianDateFromGregorian(new Date(t2.date))}</td>
+                <td><span className="text-status-absent font-medium">{t('expense')}</span></td>
+                <td>{t(t2.category)}</td>
+                <td className="hidden md:table-cell">{t2.description ?? '—'}</td>
+                <td className="hidden lg:table-cell">{t2.recordedByName ?? '—'}</td>
+                <td className="text-right text-status-absent">{formatETB(Number(t2.amount))}</td>
               </tr>
             ))}
             {!data.transactions?.income?.length && !data.transactions?.expense?.length && (
-              <tr><td colSpan={6} className="text-center text-sm text-slate py-8">No transactions in this period.</td></tr>
+              <tr><td colSpan={6} className="text-center text-sm text-slate py-8">{t('noTransactionsThisPeriod')}</td></tr>
             )}
           </tbody>
         </table>

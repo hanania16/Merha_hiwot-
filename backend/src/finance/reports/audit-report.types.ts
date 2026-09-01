@@ -2,6 +2,7 @@
 export type AuditReport = {
   kind: 'monthly' | 'yearly';
   period: { from: Date; to: Date };
+  lastStudentFeeBatchTime: Date | null;
   summary: { totalIncome: number; totalExpense: number; net: number; incomeCount: number; expenseCount: number };
   incomeBySourceType: Record<string, { total: number; count: number; recordIds: string[] }>;
   expenseByCategory: Record<string, { total: number; count: number; recordIds: string[] }>;

@@ -8,10 +8,12 @@ import {
 import { api } from '@/lib/api';
 import { Topbar } from '@/components/layout/Topbar';
 import { StatCard } from '@/components/ui/StatCard';
+import { useLang } from '@/lib/i18n';
 
 const COLORS = ['#D4AF37', '#111111', '#4B5563', '#16A34A', '#DC2626', '#EAB308', '#F97316', '#9CA3AF', '#6366F1'];
 
 export default function AnalyticsPage() {
+  const { t } = useLang();
   const [trend, setTrend] = useState<any[]>([]);
   const [expenseByCategory, setExpenseByCategory] = useState<any[]>([]);
   const [donationTrend, setDonationTrend] = useState<any[]>([]);
@@ -30,26 +32,26 @@ export default function AnalyticsPage() {
 
   return (
     <div>
-      <Topbar title="Financial Analytics" subtitle="Trends and breakdowns across income, expenses, and fee collection" />
+      <Topbar title={t('financialAnalytics')} subtitle={t('financialAnalyticsSub')} />
 
       {collectionRate && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <StatCard label="Collection Rate" value={`${collectionRate.collectionRatePercent}%`} accent="gold" />
-          <StatCard label="Months Paid" value={String(collectionRate.totalPaidMonths)} accent="green" />
-          <StatCard label="Months Possible" value={String(collectionRate.totalPossibleMonths)} accent="ink" />
+          <StatCard label={t('collectionRate')} value={`${collectionRate.collectionRatePercent}%`} accent="gold" />
+          <StatCard label={t('monthsPaid')} value={String(collectionRate.totalPaidMonths)} accent="green" />
+          <StatCard label={t('monthsPossible')} value={String(collectionRate.totalPossibleMonths)} accent="ink" />
         </div>
       )}
 
       {paymentStatus && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <StatCard label="Not Paid" value={String(paymentStatus.notPaid)} accent="red" />
-          <StatCard label="Paid Today" value={String(paymentStatus.paidToday)} accent="green" />
-          <StatCard label="Paid This Month" value={String(paymentStatus.paidThisMonth)} accent="green" />
+          <StatCard label={t('notPaid')} value={String(paymentStatus.notPaid)} accent="red" />
+          <StatCard label={t('paidToday')} value={String(paymentStatus.paidToday)} accent="green" />
+          <StatCard label={t('paidThisMonth')} value={String(paymentStatus.paidThisMonth)} accent="green" />
         </div>
       )}
 
       <div className="card p-6 mb-6">
-        <h2 className="text-sm font-semibold text-ink mb-4">Income vs Expense Trend</h2>
+        <h2 className="text-sm font-semibold text-ink mb-4">{t('incomeVsExpenseTrend')}</h2>
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={trend}>
             <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" />
@@ -66,7 +68,7 @@ export default function AnalyticsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="card p-6">
-          <h2 className="text-sm font-semibold text-ink mb-4">Expenses by Category</h2>
+          <h2 className="text-sm font-semibold text-ink mb-4">{t('expensesByCategory')}</h2>
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
               <Pie data={expenseByCategory} dataKey="total" nameKey="category" cx="50%" cy="50%" outerRadius={90}>
@@ -79,7 +81,7 @@ export default function AnalyticsPage() {
         </div>
 
         <div className="card p-6">
-          <h2 className="text-sm font-semibold text-ink mb-4">Donation Trend</h2>
+          <h2 className="text-sm font-semibold text-ink mb-4">{t('donationTrend')}</h2>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={donationTrend}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" />
@@ -93,7 +95,7 @@ export default function AnalyticsPage() {
       </div>
 
       <div className="card p-6">
-        <h2 className="text-sm font-semibold text-ink mb-4">Yearly Financial Trend</h2>
+        <h2 className="text-sm font-semibold text-ink mb-4">{t('yearlyFinancialTrend')}</h2>
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={yearlyTrend}>
             <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" />

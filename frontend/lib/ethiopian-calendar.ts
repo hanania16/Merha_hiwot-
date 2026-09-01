@@ -45,6 +45,12 @@ export function currentEthiopianYear() {
   return toEthiopian(new Date()).year;
 }
 
+/** Fee tracking begins at Nehase 2018 — months before it are never back-charged. Mirrors backend FEE_TRACKING_START_YEAR. */
+export const FEE_TRACKING_START_YEAR = 2018;
+
+/** The 12th Ethiopian month (Nehase) is the first chargeable month of the start year. */
+export const FEE_TRACKING_START_MONTH_ORDER = 12;
+
 export function formatEthiopianDateFromGregorian(date: Date): string {
   const { year, month, day } = toEthiopian(date);
   const label = ETHIOPIAN_MONTHS.find((m) => m.order === month)?.label ?? String(month);

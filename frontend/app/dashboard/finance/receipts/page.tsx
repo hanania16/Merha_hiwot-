@@ -5,6 +5,7 @@ import { api, downloadUrl } from '@/lib/api';
 import { formatETB, monthLabel, formatEthiopianDateFromGregorian } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { Image } from 'lucide-react';
+import { useLang } from '@/lib/i18n';
 
 const IMG_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -26,6 +27,7 @@ interface PhotoRow {
 }
 
 export default function ReceiptsPage() {
+  const { t } = useLang();
   const [rows, setRows] = useState<ReceiptRow[]>([]);
   const [photos, setPhotos] = useState<PhotoRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,11 +82,11 @@ export default function ReceiptsPage() {
 
   return (
     <div>
-      <Topbar title="Receipts" subtitle="Printable receipts and uploaded receipt photos" />
+      <Topbar title={t('receipts')} subtitle={t('receiptsSub')} />
 
       {/* Upload section */}
       <div className="card p-6 mb-6">
-        <h2 className="text-sm font-semibold text-ink mb-4">Upload Receipt Photo</h2>
+        <h2 className="text-sm font-semibold text-ink mb-4">{t('uploadReceiptPhoto')}</h2>
         <div
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
@@ -101,26 +103,26 @@ export default function ReceiptsPage() {
           ) : (
             <div className="flex flex-col items-center gap-2 text-slate">
               <Image size={36} />
-              <p className="text-sm">Drag & drop a PNG or JPG here, or click to browse</p>
-              <p className="text-xs">Max 5 MB</p>
+              <p className="text-sm">{t('dragDropPhoto')}</p>
+              <p className="text-xs">{t('max5MB')}</p>
             </div>
           )}
         </div>
         <input
           className="input mt-3"
-          placeholder="Add a note about this receipt photo…"
+          placeholder={t('photoNotePlaceholder')}
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
         <button className="btn-gold mt-3" disabled={!file || uploading} onClick={handleUpload}>
-          {uploading ? 'Uploading…' : 'Upload Photo'}
+          {uploading ? t('uploading') : t('uploadPhoto')}
         </button>
       </div>
 
       {/* Photo gallery */}
       {photos.length > 0 && (
         <div className="card p-6 mb-6">
-          <h2 className="text-sm font-semibold text-ink mb-4">Saved Receipt Photos</h2>
+          <h2 className="text-sm font-semibold text-ink mb-4">{t('savedReceiptPhotos')}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {photos.map((p) => (
               <div key={p.id} className="border border-gray-100 rounded-lg overflow-hidden">
@@ -144,7 +146,7 @@ export default function ReceiptsPage() {
         <table className="table-base">
           <thead>
             <tr>
-              <th>Receipt No</th><th>Student</th><th className="hidden sm:table-cell">Months</th><th>Amount</th><th className="hidden sm:table-cell">Date</th><th className="hidden lg:table-cell">Issued By</th><th></th>
+              <th>{t('receiptNo')}</th><th>{t('student')}</th><th className="hidden sm:table-cell">{t('months')}</th><th>{t('amount')}</th><th className="hidden sm:table-cell">{t('date')}</th><th className="hidden lg:table-cell">{t('issuedBy')}</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -157,12 +159,12 @@ export default function ReceiptsPage() {
                 <td className="hidden sm:table-cell">{formatEthiopianDateFromGregorian(new Date(r.paymentDate))}</td>
                 <td className="hidden lg:table-cell">{r.issuedBy.fullName}</td>
                 <td>
-                  <a className="text-xs text-gold font-medium hover:underline" href={downloadUrl(`/finance/receipts/${r.id}/print`)} target="_blank" rel="noreferrer">Print</a>
+                  <a className="text-xs text-gold font-medium hover:underline" href={downloadUrl(`/finance/receipts/${r.id}/print`)} target="_blank" rel="noreferrer">{t('print')}</a>
                 </td>
               </tr>
             ))}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={7} className="text-center text-sm text-slate py-8">No receipts yet.</td></tr>
+              <tr><td colSpan={7} className="text-center text-sm text-slate py-8">{t('noReceiptsYet')}</td></tr>
             )}
           </tbody>
         </table>

@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { formatETB, formatEthiopianDateFromGregorian } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { StatCard } from '@/components/ui/StatCard';
+import { useLang } from '@/lib/i18n';
 
 interface Summary {
   monthlyIncome: number;
@@ -60,6 +61,7 @@ interface StatementResponse {
 }
 
 export default function FinanceDashboardPage() {
+  const { t } = useLang();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [statement, setStatement] = useState<StatementResponse | null>(null);
@@ -94,7 +96,7 @@ export default function FinanceDashboardPage() {
 
   async function reverse(l: StatementLine) {
     const ok = window.confirm(
-      `Reverse this ${l.type.toLowerCase()} of ${formatETB(l.amount)}?\n\nA reversal entry will be booked — the original row is never edited or deleted.`,
+      t('reverseConfirm', { type: t(l.type), amount: formatETB(l.amount) }),
     );
     if (!ok) return;
     setReversingId(l.id);
@@ -104,7 +106,7 @@ export default function FinanceDashboardPage() {
       await api.post(endpoint);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Reversal failed');
+      setError(e instanceof Error ? e.message : t('reversalFailed'));
     } finally {
       setReversingId(null);
     }
@@ -114,47 +116,47 @@ export default function FinanceDashboardPage() {
 
   return (
     <div>
-      <Topbar title="Finance Dashboard" subtitle={`Ethiopian year ${summary?.ethiopianYear ?? ''}`} />
+      <Topbar title={t('financeDashboard')} subtitle={t('ethiopianYear', { year: summary?.ethiopianYear ?? '' })} />
 
-      {loading && <p className="text-sm text-slate">Loading…</p>}
+      {loading && <p className="text-sm text-slate">{t('loading')}</p>}
 
       {summary && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <StatCard label="Monthly Income" value={formatETB(summary.monthlyIncome)} accent="green" />
-            <StatCard label="Monthly Expenses" value={formatETB(summary.monthlyExpenses)} accent="red" />
+            <StatCard label={t('monthlyIncome')} value={formatETB(summary.monthlyIncome)} accent="green" />
+            <StatCard label={t('monthlyExpenses')} value={formatETB(summary.monthlyExpenses)} accent="red" />
             <StatCard
-              label="Current Balance"
+              label={t('currentBalance')}
               value={accountBalance === null ? '—' : formatETB(accountBalance)}
               accent="gold"
               hint={statement?.account.name ?? undefined}
             />
-            <StatCard label="Student Fees Collected" value={formatETB(summary.studentFeesCollected)} accent="ink" />
+            <StatCard label={t('studentFeesCollected')} value={formatETB(summary.studentFeesCollected)} accent="ink" />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <StatCard label="Today's Income" value={formatETB(summary.todayIncome)} accent="green" />
-            <StatCard label="Today's Expenses" value={formatETB(summary.todayExpenses)} accent="red" />
-            <StatCard label="Students Paid" value={String(summary.studentsPaid)} accent="green" />
-            <StatCard label="Students Unpaid" value={String(summary.studentsUnpaid)} accent="red" />
+            <StatCard label={t('todaysIncome')} value={formatETB(summary.todayIncome)} accent="green" />
+            <StatCard label={t('todaysExpenses')} value={formatETB(summary.todayExpenses)} accent="red" />
+            <StatCard label={t('studentsPaid')} value={String(summary.studentsPaid)} accent="green" />
+            <StatCard label={t('studentsUnpaid')} value={String(summary.studentsUnpaid)} accent="red" />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
             <StatCard
-              label="Outstanding Fee-Months"
+              label={t('outstandingFeeMonths')}
               value={String(summary.outstandingStudentFeeMonths)}
               accent="red"
-              hint="Unpaid months across all active students"
+              hint={t('unpaidAcrossActive')}
             />
-            <StatCard label="Year Income" value={formatETB(summary.yearIncome)} accent="green" />
-            <StatCard label="Year Expenses" value={formatETB(summary.yearExpenses)} accent="red" />
+            <StatCard label={t('yearIncome')} value={formatETB(summary.yearIncome)} accent="green" />
+            <StatCard label={t('yearExpenses')} value={formatETB(summary.yearExpenses)} accent="red" />
           </div>
         </>
       )}
 
       {!loading && !statement && (
         <div className="card p-8 text-center text-sm text-slate mb-8">
-          No account found. An account is required to track the balance and statement.
+          {t('noAccountFound')}
         </div>
       )}
 
@@ -162,15 +164,15 @@ export default function FinanceDashboardPage() {
         <div className="card p-6 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-ink">Account Statement — {statement.account.name}</h2>
+              <h2 className="text-sm font-semibold text-ink">{t('accountStatement', { name: statement.account.name })}</h2>
               <p className="text-xs text-slate mt-0.5">
-                {statement.account.type.replace(/_/g, ' ')}
+                {t(statement.account.type)}
                 {statement.account.bankName && ` · ${statement.account.bankName}`}
                 {statement.account.accountNumber && ` · ${statement.account.accountNumber}`}
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-slate uppercase tracking-wide">Current Balance</p>
+              <p className="text-xs text-slate uppercase tracking-wide">{t('currentBalance')}</p>
               <p className={`text-xl font-semibold ${statement.balance < 0 ? 'text-status-absent' : 'text-status-present'}`}>
                 {formatETB(statement.balance)}
               </p>
@@ -180,18 +182,18 @@ export default function FinanceDashboardPage() {
           {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
 
           {statement.statement.length === 0 ? (
-            <p className="text-sm text-slate py-6 text-center">No ledger entries on this account yet.</p>
+            <p className="text-sm text-slate py-6 text-center">{t('noLedgerEntries')}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="table-base text-sm">
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Type</th>
-                    <th>Description</th>
-                    <th className="hidden md:table-cell">Recorded By</th>
-                    <th className="text-right">Amount</th>
-                    <th className="text-right">Balance</th>
+                    <th>{t('date')}</th>
+                    <th>{t('typeLabel')}</th>
+                    <th>{t('description')}</th>
+                    <th className="hidden md:table-cell">{t('recordedBy')}</th>
+                    <th className="text-right">{t('amount')}</th>
+                    <th className="text-right">{t('balance')}</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -205,11 +207,11 @@ export default function FinanceDashboardPage() {
                           <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded-full ${
                             l.type === 'INCOME' ? 'bg-status-present/10 text-status-present' : 'bg-status-absent/10 text-status-absent'
                           }`}>
-                            {l.type}
+                            {t(l.type)}
                           </span>
                         </td>
                         <td className="min-w-[10rem]">
-                          <span className="font-medium text-ink">{l.category.replace(/_/g, ' ')}</span>
+                          <span className="font-medium text-ink">{t(l.category)}</span>
                           {l.description && <span className="block text-xs text-slate">{l.description}</span>}
                         </td>
                         <td className="hidden md:table-cell text-xs text-slate">{l.recordedBy ?? '—'}</td>
@@ -223,7 +225,7 @@ export default function FinanceDashboardPage() {
                             disabled={!canReverse || reversingId === l.id}
                             onClick={() => reverse(l)}
                           >
-                            {reversingId === l.id ? 'Reversing…' : l.isReversal ? '—' : l.reversed ? 'Reversed' : 'Reverse'}
+                            {reversingId === l.id ? t('reversing') : l.isReversal ? '—' : l.reversed ? t('reversed') : t('reverse')}
                           </button>
                         </td>
                       </tr>
@@ -234,16 +236,16 @@ export default function FinanceDashboardPage() {
             </div>
           )}
           <p className="text-[11px] text-slate mt-3">
-            Ledger is append-only: rows are never edited or deleted. Corrections are booked as REVERSAL entries.
+            {t('ledgerAppendOnly')}
           </p>
         </div>
       )}
 
       <div className="card p-6">
-        <h2 className="text-sm font-semibold text-ink mb-4">Monthly Activity Timeline</h2>
+        <h2 className="text-sm font-semibold text-ink mb-4">{t('monthlyActivityTimeline')}</h2>
         <div className="space-y-3">
           {activities.length === 0 && !loading && (
-            <p className="text-sm text-slate">No activity recorded this month yet.</p>
+            <p className="text-sm text-slate">{t('noActivityThisMonth')}</p>
           )}
           {activities.map((a, i) => (
             <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">

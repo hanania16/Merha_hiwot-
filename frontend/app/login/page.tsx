@@ -5,9 +5,11 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { login } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
+import { useLang } from '@/lib/i18n';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useLang();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -21,30 +23,26 @@ export default function LoginPage() {
     const trimmedPassword = password.trim();
 
     if (!trimmedEmail && !trimmedPassword) {
-      setError('Please enter your email and password');
+      setError(t('enterEmailPassword'));
       return;
     }
     if (!trimmedEmail) {
-      setError('Please enter your email');
+      setError(t('enterEmail'));
       return;
     }
     if (!trimmedPassword) {
-      setError('Please enter your password');
+      setError(t('enterPassword'));
       return;
     }
 
     setLoading(true);
     try {
       const user = await login(trimmedEmail, trimmedPassword);
-      if (user.role === 'ATTENDANCE_OFFICER') {
-        router.push('/dashboard/attendance');
-      } else {
-        router.push('/dashboard/finance');
-      }
+      router.push('/dashboard/finance');
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Unable to sign in';
+      const msg = err instanceof ApiError ? err.message : t('unableToSignIn');
       if (msg.toLowerCase().includes('invalid credentials')) {
-        setError('Incorrect email or password');
+        setError(t('incorrectCredentials'));
       } else {
         setError(msg);
       }
@@ -61,12 +59,12 @@ export default function LoginPage() {
             <Image src="/logo.jpg" alt="Church logo" width={80} height={80} className="object-cover w-full h-full" />
           </div>
           <p className="text-2xl font-semibold text-gold">መርሃ ህይወት ሰ/ቤት</p>
-          <p className="text-sm text-gray-400 mt-1">Sunday School Management System</p>
+          <p className="text-sm text-gray-400 mt-1">{t('sundaySchoolMgmt')}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-[#1a1a1a] border border-gray-800 rounded-card shadow-sm p-6 space-y-4">
           <div>
-            <label className="label text-gray-400">Email</label>
+            <label className="label text-gray-400">{t('email')}</label>
             <input
               type="email"
               required
@@ -77,7 +75,7 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label className="label text-gray-400">Password</label>
+            <label className="label text-gray-400">{t('password')}</label>
             <input
               type="password"
               required
@@ -91,12 +89,12 @@ export default function LoginPage() {
           {error && <p className="text-sm text-red-400">{error}</p>}
 
           <button type="submit" disabled={loading} className="btn-gold w-full">
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading ? t('signingIn') : t('signIn')}
           </button>
         </form>
 
         <p className="text-center text-xs text-gray-500 mt-6">
-          Administrator · Attendance Officer · Finance Officer
+          {t('roles')}
         </p>
       </div>
     </div>

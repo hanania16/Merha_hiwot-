@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Wallet, TrendingDown, FileBarChart, PieChart, Receipt,
-  LogOut, Users, CalendarCheck, CalendarDays, UserX, ShieldCheck, X,
+  LogOut, Users, ShieldCheck, X,
 } from 'lucide-react';
 import { logout, getCurrentUser } from '@/lib/auth';
 import { useLang } from '@/lib/i18n';
@@ -20,14 +20,8 @@ const FINANCE_NAV = [
   { href: '/dashboard/finance/receipts', key: 'receipts', icon: Receipt },
 ];
 
-const ATTENDANCE_NAV = [
-  { href: '/dashboard/attendance', key: 'dashboard', icon: LayoutDashboard },
-  { href: '/dashboard/attendance/students', key: 'students', icon: Users },
-  { href: '/dashboard/attendance/take', key: 'takeAttendance', icon: CalendarCheck },
-  { href: '/dashboard/attendance/inactive', key: 'inactiveStudents', icon: UserX },
-  { href: '/dashboard/attendance/events', key: 'events', icon: CalendarDays },
-  { href: '/dashboard/attendance/analytics', key: 'analytics', icon: PieChart },
-  { href: '/dashboard/attendance/reports', key: 'reports', icon: FileBarChart },
+const STUDENTS_NAV = [
+  { href: '/dashboard/students', key: 'students', icon: Users },
 ];
 
 export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -36,7 +30,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
   const { t } = useLang();
 
   const showFinance = user?.role === 'ADMINISTRATOR' || user?.role === 'FINANCE_OFFICER';
-  const showAttendance = user?.role === 'ADMINISTRATOR' || user?.role === 'ATTENDANCE_OFFICER';
+  const showStudents = user?.role === 'ADMINISTRATOR' || user?.role === 'FINANCE_OFFICER';
   const showAdmin = user?.role === 'ADMINISTRATOR';
 
   function renderGroup(label: string, items: typeof FINANCE_NAV) {
@@ -79,7 +73,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
       </div>
 
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
-        {showAttendance && renderGroup(t('studentManagementAttendance'), ATTENDANCE_NAV)}
+        {showStudents && renderGroup(t('studentManagementAttendance'), STUDENTS_NAV)}
         {showFinance && renderGroup(t('finance'), FINANCE_NAV)}
         {showAdmin && (
           <div className="mb-4">
@@ -100,7 +94,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
       <div className="px-4 py-4 border-t border-white/10">
         <p className="text-sm text-white/90 truncate">{user?.fullName}</p>
-        <p className="text-xs text-white/40 mb-3 truncate">{user?.role.replace('_', ' ')}</p>
+        <p className="text-xs text-white/40 mb-3 truncate">{user?.role ? t(user.role) : ''}</p>
         <button onClick={logout} className="flex items-center gap-2 text-sm text-white/70 hover:text-white">
           <LogOut size={16} /> {t('signOut')}
         </button>

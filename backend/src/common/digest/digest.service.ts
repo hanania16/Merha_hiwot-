@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AttendanceRecordsService } from '../../attendance/attendance-records/attendance-records.service';
 import { StudentFeesService } from '../../finance/student-fees/student-fees.service';
 
 @Injectable()
@@ -10,14 +9,12 @@ export class WeeklyDigestService {
 
   constructor(
     private prisma: PrismaService,
-    private attendanceRecords: AttendanceRecordsService,
     private studentFees: StudentFeesService,
   ) {}
 
   /**
    * Runs every Saturday at 08:00 server time. Creates one in-app WEEKLY_DIGEST
-   * notification summarizing: students about to be auto-inactivated (4
-   * consecutive absences), students who haven't paid this month, and a
+   * notification summarizing: students who haven't paid this month, and a
    * general "things to review" count. Visible to Administrators, Finance
    * Officers, and Attendance Officers via the bell icon.
    *
@@ -29,20 +26,14 @@ export class WeeklyDigestService {
   async runWeeklyDigest() {
     this.logger.log('Generating Saturday weekly digest...');
 
-    const [upcomingInactive, unpaidThisMonth] = await Promise.all([
-      this.attendanceRecords.getUpcomingInactive(),
-      this.studentFees.getUnpaidThisMonth(),
-    ]);
+    const unpaidThisMonth = await this.studentFees.getUnpaidThisMonth();
 
     const parts: string[] = [];
-    if (upcomingInactive.length > 0) {
-      parts.push(`${upcomingInactive.length} student(s) will be auto-inactivated on their next absence.`);
-    }
     if (unpaidThisMonth.length > 0) {
       parts.push(`${unpaidThisMonth.length} student(s) haven't paid this month's fee.`);
     }
     if (parts.length === 0) {
-      parts.push('No urgent follow-ups this week — attendance and fees look healthy.');
+      parts.push('No urgent follow-ups this week — fees look healthy.');
     }
 
     await this.prisma.notification.create({
@@ -52,14 +43,13 @@ export class WeeklyDigestService {
         message: parts.join(' '),
         metadata: {
           generatedAt: new Date().toISOString(),
-          upcomingInactive,
           unpaidThisMonth,
         } as any,
       },
     });
 
     this.logger.log('Weekly digest notification created.');
-    return { upcomingInactive, unpaidThisMonth };
+    return { unpaidThisMonth };
   }
 
   /** Manual trigger for testing/demo — calls the same logic as the Saturday cron. */

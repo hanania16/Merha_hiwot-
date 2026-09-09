@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Wallet, TrendingDown, FileBarChart, PieChart, Receipt,
-  LogOut, Users, ShieldCheck, X,
+  LogOut, X,
 } from 'lucide-react';
 import { logout, getCurrentUser } from '@/lib/auth';
 import { useLang } from '@/lib/i18n';
@@ -20,18 +20,12 @@ const FINANCE_NAV = [
   { href: '/dashboard/finance/receipts', key: 'receipts', icon: Receipt },
 ];
 
-const STUDENTS_NAV = [
-  { href: '/dashboard/students', key: 'students', icon: Users },
-];
-
 export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const pathname = usePathname();
   const user = getCurrentUser();
   const { t } = useLang();
 
   const showFinance = user?.role === 'ADMINISTRATOR' || user?.role === 'FINANCE_OFFICER';
-  const showStudents = user?.role === 'ADMINISTRATOR' || user?.role === 'FINANCE_OFFICER';
-  const showAdmin = user?.role === 'ADMINISTRATOR';
 
   function renderGroup(label: string, items: typeof FINANCE_NAV) {
     return (
@@ -73,23 +67,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
       </div>
 
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
-        {showStudents && renderGroup(t('studentManagementAttendance'), STUDENTS_NAV)}
         {showFinance && renderGroup(t('finance'), FINANCE_NAV)}
-        {showAdmin && (
-          <div className="mb-4">
-            <p className="px-3 mb-1 text-[10px] font-semibold tracking-wider text-white/40 uppercase">{t('admin')}</p>
-            <Link
-              href="/dashboard/admin"
-              onClick={onClose}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${
-                pathname === '/dashboard/admin' ? 'bg-gold text-ink' : 'text-white/80 hover:bg-white/10'
-              }`}
-            >
-              <ShieldCheck size={18} />
-              {t('admin')}
-            </Link>
-          </div>
-        )}
       </nav>
 
       <div className="px-4 py-4 border-t border-white/10">

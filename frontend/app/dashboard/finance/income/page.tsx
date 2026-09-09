@@ -13,12 +13,11 @@ import { ChevronDown } from 'lucide-react';
 const PAYMENT_METHODS = ['CASH', 'BANK_TRANSFER'];
 const SOURCE_OPTIONS = [
   { value: 'DONATION', sourceType: 'DONATION' },
-  { value: 'CHURCH_CONTRIBUTION', sourceType: 'CHURCH_CONTRIBUTION' },
-  { value: 'FUNDRAISING', sourceType: 'FUNDRAISING' },
   { value: 'SPECIAL_OFFERING', sourceType: 'SPECIAL_OFFERING' },
   { value: 'DEBRE_TABOR_FEAST', sourceType: 'DEBRE_TABOR_FEAST' },
   { value: 'NEW_YEAR', sourceType: 'NEW_YEAR' },
   { value: 'MESKEL_FEAST', sourceType: 'MESKEL_FEAST' },
+  { value: 'DEVELOPMENT_DEPART', sourceType: 'OTHER' },
   { value: 'OTHERS', sourceType: 'OTHER' },
 ];
 

@@ -10,7 +10,7 @@ interface EthiopianMonthPickerProps {
 
 export function EthiopianMonthPicker({ year, monthOrder, onChange }: EthiopianMonthPickerProps) {
   const currentYear = currentEthiopianYear();
-  const years = Array.from({ length: currentYear - 2016 + 1 }, (_, i) => 2016 + i);
+  const years = Array.from({ length: currentYear - 2018 + 1 }, (_, i) => 2018 + i);
 
   return (
     <div className="flex items-center gap-2">

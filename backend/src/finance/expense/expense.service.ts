@@ -1,12 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ApprovalDecision, ExpenseCategory } from '@prisma/client';
+import { ExpenseCategory } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
-import { FinanceAuditService } from '../../services/financeAuditService';
 import { LedgerService } from '../ledger/ledger.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
-import { ApproveTransactionDto } from './dto/approve-transaction.dto';
 import { QueryExpenseDto } from './dto/query-expense.dto';
 
 @Injectable()
@@ -15,7 +13,6 @@ export class ExpenseService {
     private prisma: PrismaService,
     private audit: AuditService,
     private notifications: NotificationsService,
-    private financeAudit: FinanceAuditService,
     private ledger: LedgerService,
   ) {}
 
@@ -23,7 +20,6 @@ export class ExpenseService {
     return this.prisma.expense.findMany({
       where: {
         category: query.category,
-        status: query.status,
         date: {
           gte: query.from ? new Date(query.from) : undefined,
           lte: query.to ? new Date(query.to) : undefined,
@@ -31,7 +27,6 @@ export class ExpenseService {
       },
       include: {
         recordedBy: { select: { fullName: true } },
-        approvedBy: { select: { fullName: true } },
         account: { select: { name: true, type: true } },
       },
       orderBy: { date: 'desc' },
@@ -76,16 +71,6 @@ export class ExpenseService {
     await this.notifications.notifyLargeExpenseIfNeeded(dto.amount, dto.category, expense.id);
 
     return expense;
-  }
-
-  async approve(id: string, dto: ApproveTransactionDto, userId: string) {
-    return this.financeAudit.approveTransaction({
-      entityType: 'Expense',
-      id,
-      approverId: userId,
-      decision: dto.decision as ApprovalDecision,
-      comments: dto.comments,
-    });
   }
 
   /**

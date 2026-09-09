@@ -1,7 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { IncomeService } from './income.service';
 import { CreateIncomeDto } from './dto/create-income.dto';
-import { ApproveTransactionDto } from './dto/approve-transaction.dto';
 import { QueryIncomeDto } from './dto/query-income.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
@@ -18,6 +17,11 @@ export class IncomeController {
     return this.incomeService.findAll(query);
   }
 
+  @Get('student-fees-summary')
+  getStudentFeesSummary() {
+    return this.incomeService.getStudentFeesSummary();
+  }
+
   @Post()
   create(@Body() dto: CreateIncomeDto, @CurrentUser() user: CurrentUserPayload) {
     return this.incomeService.create(dto, user.userId);
@@ -30,25 +34,6 @@ export class IncomeController {
     const y = year ? Number(year) : today.year;
     const m = month ? Number(month) : today.month;
     return this.incomeService.autoRecordMonthlyFees(y, m);
-  }
-
-  /**
-   * Manual trigger for the batched class income recording — run it early or use
-   * it to sweep payments in a month the scheduler already ran past. Same logic
-   * (and idempotency via includedInIncomeAt) as the daily scheduler. With no
-   * query params it sweeps ALL unincluded PAID rows; pass year/month to narrow
-   * to one specific Ethiopian month.
-   */
-  @Post('record-monthly-class-income')
-  recordMonthlyClassIncome(@Query('year') year?: string, @Query('month') month?: string) {
-    const y = year ? Number(year) : undefined;
-    const m = month ? Number(month) : undefined;
-    return this.incomeService.recordMonthlyClassIncome(y, m);
-  }
-
-  @Post(':id/approve')
-  approve(@Param('id') id: string, @Body() dto: ApproveTransactionDto, @CurrentUser() user: CurrentUserPayload) {
-    return this.incomeService.approve(id, dto, user.userId);
   }
 
   /** Append-only correction: books an offsetting REVERSAL Expense, never edits/deletes. */

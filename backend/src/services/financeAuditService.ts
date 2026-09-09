@@ -1,5 +1,5 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { ApprovalDecision, Prisma, TransactionStatus } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -136,70 +136,6 @@ export class FinanceAuditService {
   }
 
   /**
-   * Records a full approval/rejection in TransactionApproval, flips the parent
-   * record's status (approvedBy/approvedAt only on APPROVED), and logs to the
-   * audit trail. A user can never approve/reject a transaction they recorded.
-   */
-  async approveTransaction(params: {
-    entityType: LedgerEntity;
-    id: string;
-    approverId: string;
-    decision: ApprovalDecision;
-    comments?: string;
-  }) {
-    const { entityType, id, approverId, decision, comments } = params;
-
-    return this.prisma.$transaction(async (tx) => {
-      const delegate = this.delegate(tx, entityType);
-      const existing = await delegate.findUnique({ where: { id } });
-
-      if (!existing) throw new NotFoundException(`${entityType} record not found`);
-      if (existing.status === decision) {
-        throw new BadRequestException(`${entityType} is already ${decision.toLowerCase()}`);
-      }
-      if (existing.recordedById === approverId) {
-        throw new ForbiddenException('You cannot approve a transaction you recorded yourself');
-      }
-
-      await tx.transactionApproval.create({
-        data: {
-          incomeId: entityType === 'Income' ? id : null,
-          expenseId: entityType === 'Expense' ? id : null,
-          decision,
-          approverId,
-          comments,
-        },
-      });
-
-      const data =
-        decision === ApprovalDecision.APPROVED
-          ? { status: TransactionStatus.APPROVED, approvedById: approverId, approvedAt: new Date() }
-          : { status: TransactionStatus.REJECTED };
-
-      const updated = await delegate.update({ where: { id }, data });
-
-      await tx.auditLog.create({
-        data: {
-          userId: approverId,
-          changedById: approverId,
-          action: `${entityType.toUpperCase()}_${decision}`,
-          entityType,
-          entityId: id,
-          reason: comments ?? `${decision.toLowerCase()} by approver`,
-          oldValue: { status: existing.status } as Prisma.InputJsonValue,
-          newValue: {
-            status: updated.status,
-            approvedById: updated.approvedById,
-            approvedAt: updated.approvedAt,
-          } as Prisma.InputJsonValue,
-        },
-      });
-
-      return updated;
-    });
-  }
-
-  /**
    * Runs a cash/bank reconciliation. expectedBalance is SUM(approved income) -
    * SUM(approved expenses) up to periodEnd for the account; discrepancy is
    * actualBalance - expectedBalance and is STORED, never reconciled away.
@@ -220,11 +156,11 @@ export class FinanceAuditService {
     const [incomeAgg, expenseAgg] = await Promise.all([
       this.prisma.income.aggregate({
         _sum: { amount: true },
-        where: { accountId, status: TransactionStatus.APPROVED, date: { lte: periodEnd } },
+        where: { accountId, date: { lte: periodEnd } },
       }),
       this.prisma.expense.aggregate({
         _sum: { amount: true },
-        where: { accountId, status: TransactionStatus.APPROVED, date: { lte: periodEnd } },
+        where: { accountId, date: { lte: periodEnd } },
       }),
     ]);
 

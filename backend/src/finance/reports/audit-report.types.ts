@@ -34,11 +34,6 @@ export type AuditReport = {
     total: number;
     records: Array<{ id: string; date: Date; amount: number; sourceType: string; status: string; accountId: string; description: string | null }>;
   };
-  pendingApprovals: {
-    total: number;
-    income: Array<{ id: string; date: Date; amount: number; sourceType: string; createdAt: Date; accountId: string }>;
-    expense: Array<{ id: string; date: Date; amount: number; category: string; createdAt: Date; accountId: string }>;
-  };
   adjustments: Array<{
     id: string;
     entityType: string;

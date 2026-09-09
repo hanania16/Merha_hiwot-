@@ -23,7 +23,6 @@ interface ExpenseRow {
   category: string;
   description: string | null;
   recordedBy: { fullName: string };
-  approvedBy: { fullName: string } | null;
 }
 
 export default function ExpensePage() {
@@ -52,7 +51,7 @@ export default function ExpensePage() {
       <div className="card overflow-x-auto">
         <table className="table-base">
           <thead>
-            <tr><th>{t('date')}</th><th>{t('category')}</th><th>{t('description')}</th><th className="hidden md:table-cell">{t('recordedBy')}</th><th className="hidden lg:table-cell">{t('approvedBy')}</th><th className="text-right">{t('amount')}</th></tr>
+            <tr><th>{t('date')}</th><th>{t('category')}</th><th>{t('description')}</th><th className="hidden md:table-cell">{t('recordedBy')}</th><th className="text-right">{t('amount')}</th></tr>
           </thead>
           <tbody>
             {rows.map((r) => (
@@ -61,7 +60,6 @@ export default function ExpensePage() {
                 <td>{t(r.category)}</td>
                 <td>{r.description ?? '—'}</td>
                 <td className="hidden md:table-cell">{r.recordedBy?.fullName}</td>
-                <td className="hidden lg:table-cell">{r.approvedBy?.fullName ?? '—'}</td>
                 <td className="text-right text-status-absent font-medium">{formatETB(Number(r.amount))}</td>
               </tr>
             ))}

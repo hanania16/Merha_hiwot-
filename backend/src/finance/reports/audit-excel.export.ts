@@ -214,22 +214,6 @@ export async function exportAuditExcel(res: Response, report: AuditReport, filen
     { currencyCols: [3] },
   );
 
-  const pendingRows: SheetRows = [
-    ...report.pendingApprovals.income.map((i) => [isoDate(i.date), LABELS.income, enumLabel(i.sourceType, lang), i.amount]),
-    ...report.pendingApprovals.expense.map((e) => [isoDate(e.date), LABELS.expense, enumLabel(e.category, lang), e.amount]),
-  ];
-  styleSheet(
-    workbook.addWorksheet(LABELS.pendingApprovals),
-    [
-      { header: 'Date', key: 'date', width: 14 },
-      { header: 'Type', key: 'type', width: 14 },
-      { header: 'Category', key: 'category', width: 22 },
-      { header: 'Amount', key: 'amount', width: 18, currency: true },
-    ],
-    pendingRows,
-    { currencyCols: [4] },
-  );
-
   const adjRows: SheetRows = report.adjustments.map((a) => [
     isoDate(a.createdAt),
     a.entityType,

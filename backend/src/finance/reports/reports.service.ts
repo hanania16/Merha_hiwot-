@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, ReconciliationStatus, TransactionStatus } from '@prisma/client';
+import { Prisma, ReconciliationStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   toGregorian,
@@ -15,8 +15,6 @@ const DISCREPANCY_STATUSES: ReconciliationStatus[] = [
 ];
 
 const LEDGER_AUDIT_ENTITY_TYPES = ['Income', 'Expense'];
-
-const REVIEW_CUTOFF_MS = 7 * 24 * 60 * 60 * 1000;
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -88,19 +86,16 @@ export class FinanceReportsService {
       this.prisma.monthlyPayment.aggregate({ _max: { includedInIncomeAt: true } }).then((a) => a._max.includedInIncomeAt ?? null),
     ]);
 
-    const approvedIncomes = incomes.filter((i) => i.status === TransactionStatus.APPROVED);
-    const approvedExpenses = expenses.filter((e) => e.status === TransactionStatus.APPROVED);
-
-    // 1 + 2. Approved income by sourceType / approved expense by category, with record IDs.
+    // 1 + 2. Income by sourceType / expense by category, with record IDs.
     const incomeBySourceType: Record<string, { total: number; count: number; recordIds: string[] }> = {};
-    for (const i of approvedIncomes) {
+    for (const i of incomes) {
       const g = (incomeBySourceType[i.sourceType] ??= { total: 0, count: 0, recordIds: [] });
       g.total = round2(g.total + Number(i.amount));
       g.count += 1;
       g.recordIds.push(i.id);
     }
     const expenseByCategory: Record<string, { total: number; count: number; recordIds: string[] }> = {};
-    for (const e of approvedExpenses) {
+    for (const e of expenses) {
       const g = (expenseByCategory[e.category] ??= { total: 0, count: 0, recordIds: [] });
       g.total = round2(g.total + Number(e.amount));
       g.count += 1;
@@ -177,26 +172,7 @@ export class FinanceReportsService {
       })),
     };
 
-    // 6. Pending approvals — regardless of when they were created.
-    const [pendingIncome, pendingExpense] = await Promise.all([
-      this.prisma.income.findMany({
-        where: { status: TransactionStatus.PENDING_APPROVAL },
-        select: { id: true, date: true, amount: true, sourceType: true, category: true, description: true, createdAt: true, accountId: true },
-        orderBy: { createdAt: 'asc' },
-      }),
-      this.prisma.expense.findMany({
-        where: { status: TransactionStatus.PENDING_APPROVAL },
-        select: { id: true, date: true, amount: true, category: true, description: true, createdAt: true, accountId: true },
-        orderBy: { createdAt: 'asc' },
-      }),
-    ]);
-    const pendingApprovals = {
-      total: pendingIncome.length + pendingExpense.length,
-      income: pendingIncome.map((i) => ({ id: i.id, date: i.date, amount: Number(i.amount), sourceType: i.sourceType, createdAt: i.createdAt, accountId: i.accountId })),
-      expense: pendingExpense.map((e) => ({ id: e.id, date: e.date, amount: Number(e.amount), category: e.category, createdAt: e.createdAt, accountId: e.accountId })),
-    };
-
-    // 7. Adjustments — audit trail entries for Income/Expense with a reason (post-creation edits, approvals, rejections).
+    // 6. Adjustments — audit trail entries for Income/Expense with a reason (post-creation edits, approvals, rejections).
     const adjustments = auditLogs.map((l) => ({
       id: l.id,
       entityType: l.entityType,
@@ -210,13 +186,7 @@ export class FinanceReportsService {
       newValue: l.newValue,
     }));
 
-    // 8. Flat "requires review" — unresolved discrepancies, missing receipts, pending approvals older than 7 days.
-    const reviewCutoff = new Date(Date.now() - REVIEW_CUTOFF_MS);
-    const overduePending = [
-      ...pendingIncome.map((i) => ({ ...i, entityType: 'Income' as const })),
-      ...pendingExpense.map((e) => ({ ...e, entityType: 'Expense' as const })),
-    ].filter((p) => p.createdAt < reviewCutoff);
-
+    // 7. Flat "requires review" — unresolved discrepancies, missing receipts.
     const requiresReviewItems: Array<Record<string, unknown>> = [
       ...discrepancies.map((d) => ({
         type: 'RECONCILIATION_DISCREPANCY',
@@ -233,18 +203,10 @@ export class FinanceReportsService {
         accountId: i.accountId,
         amount: Number(i.amount),
       })),
-      ...overduePending.map((p) => ({
-        type: 'PENDING_APPROVAL',
-        transactionId: p.id,
-        entityType: p.entityType,
-        accountId: p.accountId,
-        amount: Number(p.amount),
-        ageDays: Math.floor((Date.now() - p.createdAt.getTime()) / (24 * 60 * 60 * 1000)),
-      })),
     ];
 
-    const totalIncome = approvedIncomes.reduce((s, i) => s + Number(i.amount), 0);
-    const totalExpense = approvedExpenses.reduce((s, e) => s + Number(e.amount), 0);
+    const totalIncome = incomes.reduce((s, i) => s + Number(i.amount), 0);
+    const totalExpense = expenses.reduce((s, e) => s + Number(e.amount), 0);
 
     return {
       kind,
@@ -254,15 +216,14 @@ export class FinanceReportsService {
         totalIncome: round2(totalIncome),
         totalExpense: round2(totalExpense),
         net: round2(totalIncome - totalExpense),
-        incomeCount: approvedIncomes.length,
-        expenseCount: approvedExpenses.length,
+        incomeCount: incomes.length,
+        expenseCount: expenses.length,
       },
       incomeBySourceType,
       expenseByCategory,
       accountBalances,
       discrepancies,
       missingReceipts,
-      pendingApprovals,
       adjustments,
       requiresReview: { total: requiresReviewItems.length, items: requiresReviewItems },
       transactions: {

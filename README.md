@@ -1,81 +1,139 @@
 # መርሓ ህይወት ሰ/ቤት — Sunday School Management System
 
-A two-dashboard Church Management System for an Ethiopian Orthodox Sunday School, plus an Admin overview, sharing one PostgreSQL database.
+A Church Management System for an Ethiopian Orthodox Sunday School, built with NestJS (backend) and Next.js (frontend), sharing one PostgreSQL database.
 
 ## What's in this delivery
 
 **Branding & UI**
-- Your provided logo is wired into the login page, sidebar, and every PDF export (`backend/assets/logo.jpg`, `frontend/public/logo.jpg`).
-- Consistent black/gold/white palette across all three dashboards (Finance, Attendance, Admin).
+- Logo is wired into the login page, sidebar, and every PDF export (`backend/assets/logo.jpg`, `frontend/public/logo.jpg`).
+- Consistent black/gold/white palette across both dashboards (Students and Finance).
 - English/Amharic toggle (top-right of every dashboard page) — sidebar labels and key headings switch instantly; student names display in Amharic when available and the toggle is set to አማ.
 - Student names fully support Amharic Unicode (`fullNameAmharic` field, searchable).
-[[]]
+- Responsive design with mobile drawer sidebar.
+
 **Student data**
 - Every student has an auto-generated Student ID (`MH-0001`, …), English + Amharic name, gender, phone, parent info, class, registration date, and working-member flag (for the 2%-of-salary fee rule).
-- Seed data now includes 15 realistic bilingual students, 3 teachers, and 3 events.
-
-**Attendance automation**
-- **Auto-inactivation**: the 5th consecutive absence automatically flips a student to `INACTIVE` and writes an `InactivationRecord` (consecutive days, last attendance date, date marked inactive, reason). The student row is never deleted — see `/dashboard/attendance/inactive`.
-- **Attendance analytics**: present/absent/late/permission counts, inactive count, and 1–3/4–6/7–12 consecutive-absence-day buckets.
-- **Filters**: class (1-3/4-6/7-12), active/inactive status, and date-range filters across the students, take-attendance, and reports pages.
-- **Ethiopian Calendar**: a real Gregorian↔Ethiopian conversion (`common/constants/ethiopian-calendar.ts`, mirrored in the frontend) drives the fee grace-period rule and date displays — not just the year label.
-- **Fee reminder**: the Attendance dashboard shows unpaid-this-month students pulled live from Finance (read-only, no duplicated logic).
-
-**Events** — replaces the old static header: `/dashboard/attendance/events`. Create events with name, date, type, description, participating classes; student count and attendance are computed live; record per-student event attendance; a participation report ranks students by events attended.
-
-**Classes page removed** — class management now lives inside Student Registration (class filter + picker), Take Attendance (class selector), and Reports (class-range reports), per the new class groupings (1-3 / 4-6 / 7-12).
+- Seed data creates 3 class groups (1-3, 4-6, 7-12) and 2 users (Administrator, Finance Officer). Students are created through the registration form.
 
 **Finance — fee rules engine** (`backend/src/common/constants/fee-rules.ts`)
-- Classes 1-3 and 4-6: 30 Birr/month. Classes 7-12: 50 Birr/month. Working members: 2% of monthly salary.
-- **Late payments**: there is **no automatic late-payment penalty**. Paying a month late simply means previously-unpaid months are recorded at their normal base fee (`penaltyAmount` is always **0**), so a student who pays late just owes the standard fee for each month they missed. Month recording only runs inside the fee-tracking window (Nehase 2018 onward); any month before that is rejected.
+- Classes 1-3: 20 Birr/month. Classes 4-6: 30 Birr/month. Classes 7-12: 50 Birr/month. Working members: 2% of monthly salary.
+- **No late-payment penalty.** Paying a month late simply means previously-unpaid months are recorded at their normal base fee (`penaltyAmount` is always **0**). Month recording only runs inside the fee-tracking window (Nehase 2018 onward); any month before that is rejected.
 - **Student Fee Management** shows outstanding balance per student = unpaid months × monthly base fee (no penalty).
 - **Record Payment** shows the outstanding-balance breakdown before saving (current month base + previous unpaid months) and lets you select months to pay plus a payment method — **Cash**, **Bank Transfer**, or **Telebirr Transfer**. Bank Transfer records the **account owner name**; Telebirr Transfer records the **phone number**; Cash needs no extra field.
-- **Analytics** adds a payment-status breakdown (`notPaid`, `paidToday`, `paidThisMonth`, `totalActiveStudents`) plus the existing collection-rate and trend charts.
+- **Bulk payments**: record payments for an entire class level across selected months, with optional per-student overrides.
+- **Analytics** adds a payment-status breakdown (`notPaid`, `paidToday`, `paidThisMonth`) plus collection-rate and trend charts.
+
+**Income & Expense management**
+- Record income from donations, church contributions, fundraising, special offerings, feast collections (Debre Tabor, New Year, Meskel), and others.
+- Record expenses across categories: teaching materials, stationery, snacks, transportation, equipment, maintenance, events, charity, miscellaneous.
+- Payment methods: Cash, Bank Transfer, Mobile Money, Cheque, Telebirr Transfer.
+- **Append-only corrections**: Income and Expense records are never edited or deleted. Corrections go through REVERSAL entries that create offsetting transactions.
+
+**Accounts & Ledger**
+- Cash box and bank account management with opening balances.
+- Full account statement with chronological ledger lines and running balance.
+- Atomic balance updates via `LedgerService` with row-level locking (`SELECT ... FOR UPDATE`) to prevent concurrent write races.
+- `Account.currentBalance` is only modified through `LedgerService` — never directly by user-facing endpoints.
+
+**Approval workflow**
+- Income/Expense records go through an approval workflow (`PENDING_APPROVAL` → `APPROVED`/`REJECTED`).
+- `TransactionApproval` records form an immutable history of every decision.
+- A user cannot approve a transaction they themselves recorded.
+
+**Reconciliation**
+- Run reconciliation against cash/bank accounts (expected vs actual balance).
+- Track discrepancies with status workflow: MATCHED, DISCREPANCY_FOUND, UNDER_INVESTIGATION, RESOLVED.
+
+**Reports & Export**
+- **Period Report**: custom date range with income/expense/balance summaries.
+- **Monthly Report**: full audit report for an Ethiopian month.
+- **Yearly Report**: full audit report for an Ethiopian year.
+- **Report History**: saved monthly/yearly snapshots (auto-saved on the last day of each Ethiopian month/year).
+- **PDF Export**: uses PDFKit with Noto Sans Ethiopic fonts for Amharic text support.
+- **Excel Export**: uses ExcelJS with gold-colored headers.
+
+**Receipts**
+- Create receipts with auto-generated receipt numbers (`MH-YYYY-NNNNN`).
+- Upload receipt photos (PNG/JPG, max 5MB) with notes.
+- Print PDF receipts.
+
+**Ethiopian Calendar**
+- Full Gregorian↔Ethiopian conversion using Julian Day Number algorithm.
+- All finance system dates, fee tracking, reports, and snapshots use the Ethiopian calendar.
+- Ethiopian date picker component with day/month/year drill-down.
+- 13 months (12 × 30 days + Pagume: 5 or 6 days).
 
 **Notification bell** (top-right of every dashboard)
-- Unified `/notifications` feed, filtered per role (Administrators see everything).
+- Unified `/notifications` feed, filtered per role (Administrators see everything; Finance Officers see finance-related notifications).
 - Unread badge, mark-one-read, mark-all-read.
-- **Saturday weekly digest**: a cron job (`common/digest`, `@nestjs/schedule`, `0 8 * * 6` Africa/Addis_Ababa) runs every Saturday at 08:00 and creates one notification summarizing (a) students about to be auto-inactivated (4 consecutive absences — one more triggers it), (b) students who haven't paid this month, and (c) a general status line if nothing's urgent. An Administrator can also trigger it on demand via `POST /api/v1/digest/run-now`.
-  - **Note:** this creates an in-app notification only, since I don't have email/SMS credentials to send it externally. To also get it by email or SMS, connect a provider (SMTP env vars, or an email/SMS MCP connector) and call it at the end of `WeeklyDigestService.runWeeklyDigest()`.
+- **Saturday weekly digest**: a cron job runs every Saturday at 08:00 (Africa/Addis_Ababa) and creates an in-app notification summarizing students who haven't paid this month. An Administrator can also trigger it on demand via `POST /api/v1/digest/run-now`.
+  - In-app notification only — no outbound email/SMS provider is configured.
 
-**Admin dashboard** (`/dashboard/admin`, Administrators only) — one synchronized snapshot: total/active/inactive students, new registrations, total income/expenses, current balance, outstanding fees, event stats, today's attendance %. It reads the same tables every other dashboard reads — no separate logic, so it can never drift out of sync.
-
-**Backend synchronization** — registering a student, paying a fee, an attendance-triggered inactivation, or an event RSVP all read/write the same Prisma tables; every dashboard queries those tables live, so there's nothing to keep in sync manually. Every mutation still goes through the shared audit log (`GET /api/v1/audit-log`).
+**Audit trail**
+- Every mutation goes through the shared audit log (`GET /api/v1/audit-log`).
+- Audited field-level edits diff old vs new values with a mandatory reason string.
 
 ## Project structure
 
 ```
 marha-hiwot/
-├── backend/                        NestJS API (TypeScript, Prisma, PostgreSQL)
-│   ├── assets/logo.jpg             embedded in every PDF export
-│   ├── prisma/schema.prisma        full data model (15 models, 12 enums)
-│   ├── prisma/seed.ts              bilingual demo data
+├── backend/                          NestJS API (TypeScript, Prisma, PostgreSQL)
+│   ├── assets/logo.jpg               embedded in every PDF export
+│   ├── prisma/schema.prisma          full data model (15 models, 13 enums)
+│   ├── prisma/seed.ts                demo users and class groups
 │   └── src/
 │       ├── common/
-│       │   ├── audit/              shared audit log (global)
-│       │   ├── notifications/      unified bell-icon feed (global)
-│       │   ├── digest/             Saturday weekly-digest cron
-│       │   └── constants/          Ethiopian calendar conversion, fee-rules engine
-│       ├── students/                full CRUD, Amharic search, inactive-students list
-│       ├── admin/                   synchronized overview
-│       ├── finance/                 dashboard, student-fees (fee engine), income, expense,
-│       │                            analytics, reports (PDF/Excel + logo), receipts
-│       └── attendance/
-│           ├── class-groups/ · teachers/
-│           ├── attendance-events/ · attendance-records/   (auto-inactivation lives here)
-│           ├── events/              Events module
-│           ├── dashboard/ · analytics/ · reports/ · notifications/
-├── frontend/                        Next.js App Router (TypeScript, Tailwind)
+│       │   ├── audit/                shared audit log (global)
+│       │   ├── constants/            Ethiopian calendar conversion, fee-rules engine
+│       │   ├── decorators/           @Public, @Roles, @CurrentUser
+│       │   ├── digest/               Saturday weekly-digest cron
+│       │   ├── filters/              global exception filter
+│       │   ├── guards/               JWT auth guard, roles guard
+│       │   └── notifications/        unified bell-icon feed (global)
+│       ├── students/                 CRUD, Amharic search, fee status
+│       ├── admin/                    synchronized overview stats
+│       ├── users/                    user listing (admin-only)
+│       ├── auth/                     JWT login, profile
+│       ├── services/                 financeAuditService (audited edits, approvals)
+│       └── finance/
+│           ├── dashboard/            finance dashboard summary + activity timeline
+│           ├── student-fees/         fee status, single/bulk payment recording
+│           ├── income/               income CRUD, auto-record scheduler, approval, reversal
+│           ├── expense/              expense CRUD, approval, reversal
+│           ├── accounts/             cash/bank accounts, ledger statement
+│           ├── ledger/               atomic balance-update with row locking
+│           ├── receipts/             receipt creation, PDF print, photo upload
+│           ├── reconciliations/       account reconciliation workflow
+│           ├── reports/              period/monthly/yearly reports, PDF/Excel export, snapshots
+│           ├── analytics/            charts and data visualization
+│           └── notifications/        finance-specific notification feed
+├── frontend/                          Next.js App Router (TypeScript, Tailwind)
 │   ├── public/logo.jpg
-│   ├── lib/i18n.tsx                 English/Amharic context
-│   ├── lib/ethiopian-calendar.ts    Gregorian↔Ethiopian conversion
-│   ├── components/layout/           Sidebar (logo, nav), Header (language + bell), NotificationBell
+│   ├── lib/
+│   │   ├── api.ts                    HTTP client with auth
+│   │   ├── auth.ts                   login/logout/role helpers
+│   │   ├── i18n.tsx                  English/Amharic translations (~160+ keys)
+│   │   ├── ethiopian-calendar.ts     Gregorian↔Ethiopian conversion
+│   │   └── header-context.tsx        React context for header slot injection
+│   ├── components/
+│   │   ├── layout/                   Sidebar, Header, Topbar, NotificationBell
+│   │   ├── ui/                       Modal, StatCard, Badge
+│   │   ├── EthiopianDatePicker.tsx   Ethiopian calendar date picker
+│   │   └── RegisterModal.tsx         student registration form
 │   └── app/dashboard/
-│       ├── admin/
-│       ├── attendance/{ , students, students/[id], take, inactive, events, analytics, reports}
-│       └── finance/{ , student-fees, income, expense, analytics, reports, receipts}
+│       ├── finance/
+│       │   ├── page.tsx              finance dashboard (stats + ledger + timeline)
+│       │   ├── student-fees/         fee management + payment recording
+│       │   ├── income/               income list + record form + fee batch runner
+│       │   ├── expense/              expense list + record form
+│       │   ├── analytics/            charts (line, pie, bar)
+│       │   ├── reports/              period/monthly/yearly reports + history + export
+│       │   └── receipts/             receipt list + photo upload + gallery
+│       └── students/
+│           ├── page.tsx              student list + registration
+│           └── [id]/                 student profile + edit + delete
 ├── docker-compose.yml
-└── .github/workflows/ci.yml
+└── docker-compose.override.yml
 ```
 
 ## Running locally with Docker (recommended)
@@ -88,7 +146,7 @@ docker compose up --build
 ```
 
 ```bash
-docker compose exec backend npx prisma migrate dev --name init
+docker compose exec backend npx prisma migrate deploy
 docker compose exec backend npm run prisma:seed
 ```
 
@@ -115,37 +173,41 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
-Seed data includes one student already auto-inactivated (5 consecutive absences) and one at 4 consecutive absences (shows as "upcoming inactive" — exactly what the Saturday digest flags), so you can see the automation working immediately.
+## Seed users
+
+| Email                       | Role          | Password     |
+|-----------------------------|---------------|--------------|
+| admin@marhahiwot.org        | ADMINISTRATOR | Password123! |
+| finance@marhahiwot.org      | FINANCE_OFFICER | Password123! |
+
+## Roles
+
+**ADMINISTRATOR** — full access to everything: students CRUD, finance, accounts, reports, audit log, notifications, digest.
+
+**FINANCE_OFFICER** — full access to all finance modules (fees, income, expense, accounts, reports, receipts, reconciliation, analytics). Can create students but cannot update or delete them. Read-only access to audit logs.
 
 ## Notes on scope
 
 - **Amharic coverage**: the toggle translates sidebar/header labels and displays Amharic student names; it's a lightweight dictionary (`lib/i18n.tsx`), not a full i18n framework — extend `DICTIONARY` for more strings as needed.
-- **Weekly digest delivery**: in-app notification only (see above) — no outbound email/SMS provider is configured.
+- **Weekly digest delivery**: in-app notification only — no outbound email/SMS provider is configured.
 - **S3 photo upload** is still stubbed (schema field exists, endpoints accept a URL string).
-- **Student-fee income ledger (single source of truth)**: `MonthlyPayment` is the source of truth for student-fee revenue — dashboards compute "Student Fees Collected" as `SUM(amount) WHERE status = 'PAID'` directly from `MonthlyPayment`, never from `Income` rows. Income recording is **batched**: `recordPayment()`/`recordClassPayments()` only mark months PAID/UNPAID — no `Income` row is created at payment time. A scheduled job (`recordMonthlyClassIncome`, the 26th cron `/ POST /finance/income/record-monthly-class-income`) runs daily from the 26th of each Ethiopian month, groups that month's newly-PAID `MonthlyPayment` rows by class level (1-3 / 4-6 / 7-12), creates up to one `STUDENT_FEES` `Income` row per class (keyed `STUDENT_FEES:{classLevel}:{year}:{month}:{batchTimestamp}`), and stamps each folded row `includedInIncomeAt = now()` **in the same DB transaction** that creates the income rows. Idempotency is the `includedInIncomeAt IS NULL` filter itself: a same-day rerun finds zero new rows, so it cannot double-count. A student who pays **after** the 26th keeps `includedInIncomeAt = null` and is swept into the next daily run, exactly once. Because income lags payments until the batch runs, the Income page shows a note explaining that `STUDENT_FEES` totals can lag real payments; the Student Fee page remains real-time (reads `MonthlyPayment` directly).
+- **Student-fee income ledger (single source of truth)**: `MonthlyPayment` is the source of truth for student-fee revenue. Income recording is **batched**: `recordPayment()`/`recordClassPayments()` only mark months PAID/UNPAID — no `Income` row is created at payment time. A scheduled job runs daily from the 26th of each Ethiopian month, groups that month's newly-PAID `MonthlyPayment` rows by class level (1-3 / 4-6 / 7-12), creates aggregated `STUDENT_FEES` `Income` rows, and stamps each folded row `includedInIncomeAt`. Because income lags payments until the batch runs, the Income page shows a note explaining that `STUDENT_FEES` totals can lag real payments; the Student Fee page remains real-time (reads `MonthlyPayment` directly).
 
-## Known follow-ups (tracked, not done)
+## Cron jobs
 
-- **Legacy student-fee Income rows — review + delete on production** (dev seed DB already cleaned). Old accrual-estimate `Income` rows — per-class aggregates (`referenceNumber = AUTO:STUDENT_FEES:{year}:{month}`) and marker-less class-batch rows — are double-counted against individually-recorded payments and/or not backed by real payments. Because revenue is now derived from `MonthlyPayment` and booked by the class batch job, they must be reviewed and removed before relying on `Income` ledger totals (`currentBalance`, income reports). **Note:** the new batch rows use the prefix `STUDENT_FEES:` (plural, class-level keys) — the cleanup query below deliberately excludes them by only targeting the legacy `AUTO:STUDENT_FEES:` and marker-less forms.
-  - **OWNER:** Hanania (Finance Officer)
-  - **DEADLINE:** end of every month (recurring — monthly review/cleanup as part of the month-end close)
-  - **Must capture before/after prod numbers when run:** record `totalIncome` and the STUDENT_FEE income subtotal *before* and *after* the delete. The dev seed drop was **730 ETB** (25536 → 24806). The equivalent prod drop must be captured and communicated to whoever reads the finance dashboard **before** the migration is applied, so the reported decrease is understood as *accuracy correction* (removing double-counted accruals), not missing money.
-  - Preview then delete:
+| Job | Schedule (Africa/Addis_Ababa) | What it does |
+|-----|-------------------------------|--------------|
+| `auto-monthly-student-fees` | Daily 00:30 | From the 26th: auto-generates UNPAID `MonthlyPayment` rows for all active students. Daily: sweeps PAID rows into aggregated class-level `STUDENT_FEES` Income rows. |
+| `weekly-digest-saturday` | Saturdays 08:00 | Creates a `WEEKLY_DIGEST` notification summarizing unpaid students. |
+| `finance-report-snapshots` | Daily 23:50 | Last day of Ethiopian month: auto-saves MONTHLY report snapshot. Last day of year: saves YEARLY snapshot. |
+
+## Known follow-ups
+
+- **Legacy student-fee Income rows — review + delete on production**. Old accrual-estimate `Income` rows are double-counted against individually-recorded payments. Preview then delete:
   ```sql
-  -- preview:
   SELECT id, amount, "referenceNumber", description FROM income
   WHERE "sourceType" = 'STUDENT_FEE'
     AND ("referenceNumber" IS NULL OR "referenceNumber" LIKE 'AUTO:STUDENT_FEES:%' OR "referenceNumber" NOT LIKE 'STUDENT_FEE:%' AND "referenceNumber" NOT LIKE 'STUDENT_FEES:%');
-  -- delete (after review):
-  DELETE FROM income
-  WHERE "sourceType" = 'STUDENT_FEE'
-    AND ("referenceNumber" IS NULL OR "referenceNumber" LIKE 'AUTO:STUDENT_FEES:%' OR "referenceNumber" NOT LIKE 'STUDENT_FEE:%' AND "referenceNumber" NOT LIKE 'STUDENT_FEES:%');
   ```
-  The dev seed drop was measured against this rule; re-run the preview before each manual run.
-- **Working member with no salary on file — outstanding undercounts to 0** (`backend/src/common/constants/fee-rules.ts` `baseFeeFor`): a `isWorkingMember` student with `monthlySalary = NULL` gets `2% of 0 = 0 Birr` as the per-month fee, so an unpaid month is counted as 0 owed instead of the class or salary-based fee. This is silent — the finance dashboard shows current balance without flagging it. **Live status: 1 affected** (MH-0006 Dawit Dereje, active, `monthlySalary = NULL`). Current-dollar impact today is 0 ETB because every window month (Nehase 2018) is already PAID — the undercount only materializes the first time a window month closes unpaid while the field is empty. Real money being missed now: none; real money at risk: each unpaid month × (their actual fee).
-  - **OWNER:** Hanania (Finance Officer)
-  - **DEADLINE:** before the end of the next Ethiopian month (Nehase 2018 closes → Meskerem 2019 becomes the first default-due month)
-  - **Action:** (1) populate `monthlySalary` for MH-0006 via the DB directly, and (2) prevent recurrence by requiring a salary when `isWorkingMember` is set in student registration — add a validation rule (and consider a surface flag, e.g. a "salary missing" badge in Student Fee Management) rather than letting `baseFeeFor` legitimately return 0.
-  - **Verification:** after fixing, `GET /finance/student-fees` should return `monthlyBaseFee > 0` for MH-0006, and `outstandingBalance` for an unpaid month equals the salary-based fee.
-- **Jest config issue**: `jest` fails to parse the `.ts` spec sources in `src/` (decorator syntax) while the compiled `dist/` versions pass — currently masked because 26 tests still pass via `dist`. Fix the jest/babel or ts-jest config so source-level suites can fail loudly instead of silently degrading.
-- Frontend type-checked and production-built clean (20 routes) after every change in this pass. `prisma generate`/`migrate` couldn't be verified in this sandbox (needs `binaries.prisma.sh`, not reachable here) — works normally with standard internet access.
+- **Working member with no salary on file** — outstanding undercounts to 0 (`backend/src/common/constants/fee-rules.ts`). A `isWorkingMember` student with `monthlySalary = NULL` gets `2% of 0 = 0 Birr` as the per-month fee. **Live status: 1 affected** (MH-0006). Action: populate salary and require it in registration.
+- **Jest config issue**: `jest` fails to parse `.ts` spec sources (decorator syntax) while compiled `dist/` versions pass.

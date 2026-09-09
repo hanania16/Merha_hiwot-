@@ -323,20 +323,6 @@ function drawMissingReceipts(doc: PDFKit.PDFDocument, report: AuditReport, lang:
   drawTable(doc, [110, 140, 130, 120], ['ቀን', 'ምንጭ', 'መጠን', 'ሁኔታ'], rows);
 }
 
-function drawPendingApprovals(doc: PDFKit.PDFDocument, report: AuditReport, lang: 'en' | 'am') {
-  sectionTitle(doc, LABELS.pendingApprovals);
-  const { income, expense } = report.pendingApprovals;
-  if (income.length === 0 && expense.length === 0) return noneLine(doc);
-  drawText(doc, `${LABELS.income}: ${income.length}  |  ${LABELS.expense}: ${expense.length}`, MARGIN, doc.y, PAGE_WIDTH - MARGIN * 2, { size: 9 });
-  doc.y += lineHeightOf(9);
-  doc.moveDown(0.3);
-  const rows: Row[] = [
-    ...income.map((i) => [isoDate(i.date), LABELS.income, enumLabel(i.sourceType, lang), `${money(i.amount)} ETB`]),
-    ...expense.map((e) => [isoDate(e.date), LABELS.expense, enumLabel(e.category, lang), `${money(e.amount)} ETB`]),
-  ];
-  drawTable(doc, [110, 90, 140, 130], ['ቀን', 'ዓይነት', 'ምድብ', 'መጠን'], rows);
-}
-
 function drawAdjustments(doc: PDFKit.PDFDocument, report: AuditReport) {
   sectionTitle(doc, LABELS.adjustmentsLog);
   if (report.adjustments.length === 0) return noneLine(doc);
@@ -386,7 +372,6 @@ export async function exportAuditPdf(res: Response, report: AuditReport, filenam
   drawAccountBalances(doc, report);
   drawDiscrepancies(doc, report);
   drawMissingReceipts(doc, report, lang);
-  drawPendingApprovals(doc, report, lang);
   drawAdjustments(doc, report);
   drawSummaryFooter(doc, report);
 

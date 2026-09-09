@@ -41,7 +41,7 @@ export class CreateStudentDto {
   @IsOptional()
   @IsNumber({}, { message: 'monthlySalary must be a number' })
   @Min(1, { message: 'monthlySalary must be greater than 0' })
-  @ValidateIf((o) => o.isWorkingMember === true || o.monthlySalary != null)
+  @ValidateIf((o) => o.isWorkingMember === true)
   monthlySalary?: number;
 
   @IsOptional()

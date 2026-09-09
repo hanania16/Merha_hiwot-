@@ -100,6 +100,16 @@ export function ethiopianTodayISO(): string {
   return gregToLocalStr(toGregorian(year, month, day));
 }
 
+/** Gregorian ISO string for the first day of an Ethiopian month. */
+export function ethiopianMonthStart(year: number, monthOrder: number): string {
+  return gregToLocalStr(toGregorian(year, monthOrder, 1));
+}
+
+/** Gregorian ISO string for the last day of an Ethiopian month. */
+export function ethiopianMonthEnd(year: number, monthOrder: number): string {
+  return gregToLocalStr(toGregorian(year, monthOrder, ethiopianMonthDays(year, monthOrder)));
+}
+
 function gregToLocalStr(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');

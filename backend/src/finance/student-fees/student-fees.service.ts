@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { EthiopianMonth, PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
+import { ClassLevel, EthiopianMonth, PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
-import { ETHIOPIAN_MONTHS, currentEthiopianYear } from '../../common/constants/ethiopian-calendar';
+import { LedgerService } from '../ledger/ledger.service';
+import { ETHIOPIAN_MONTHS, currentEthiopianYear, monthLabel } from '../../common/constants/ethiopian-calendar';
 import {
   FEE_TRACKING_START_YEAR,
   baseFeeFor,
@@ -21,9 +22,18 @@ const countPaidInWindow = (
   payments: { status: PaymentStatus; ethiopianYear: number; month: EthiopianMonth }[],
 ) => payments.filter((p) => p.status === 'PAID' && isWithinFeeTrackingWindow(p.ethiopianYear, monthOrder(p.month))).length;
 
+/** Format a ClassLevel enum as the readable "1-3" / "4-6" / "7-12" label. */
+function classLevelLabel(level: ClassLevel): string {
+  return level.replace('CLASS_', '').replace('_', '-');
+}
+
 @Injectable()
 export class StudentFeesService {
-  constructor(private prisma: PrismaService, private audit: AuditService) {}
+  constructor(
+    private prisma: PrismaService,
+    private audit: AuditService,
+    private ledger: LedgerService,
+  ) {}
 
   /**
    * Finance never creates students — it imports the active roster maintained
@@ -170,13 +180,10 @@ export class StudentFeesService {
       }
     }
 
-    // Payment recording only marks the month PAID/UNPAID — no Income row is
-    // created here. Class-level income is aggregated later by the monthly batch
-    // job (recordMonthlyClassIncome), which also stamps includedInIncomeAt.
     const results = [];
     for (const month of dto.months) {
       const total = Math.round(amountPerMonth * 100) / 100;
-      const { payment } = await this.upsertPayment(this.prisma.monthlyPayment, {
+      const { payment, newlyPaid } = await this.upsertPayment(this.prisma.monthlyPayment, {
         studentId: dto.studentId,
         ethiopianYear: dto.ethiopianYear,
         month,
@@ -187,6 +194,17 @@ export class StudentFeesService {
         notes: dto.notes,
         userId,
       });
+
+      if (newlyPaid) {
+        await this.postStudentFeeIncome(
+          this.prisma,
+          student.class.level,
+          dto.ethiopianYear,
+          month,
+          userId,
+        );
+      }
+
       results.push(payment);
     }
     return results;
@@ -197,8 +215,7 @@ export class StudentFeesService {
    * the PAYMENT_RECORDED / PAYMENT_UPDATED audit log. Shared by single-student
    * and whole-class bulk recording so both produce identical rows and audits.
    * `newlyPaid` is true when the record did not already have PAID status (a new
-   * row or an UNPAID→PAID transition) — callers use it to avoid re-deriving
-   * ledger income on idempotent re-runs.
+   * row or an UNPAID→PAID transition) — callers use it to post income.
    */
   private async upsertPayment(
     monthlyPayment: Prisma.MonthlyPaymentDelegate,
@@ -264,11 +281,109 @@ export class StudentFeesService {
   }
 
   /**
+   * Real-time student-fee income posting. Called after each payment upsert.
+   * Finds or creates ONE Income row per (classLevel, ethiopianYear, month),
+   * updates its amount to the sum of all PAID MonthlyPayment rows for that
+   * group, and recomputes the running balance chain forward — all in one
+   * transaction. Audit-logged on every update.
+   */
+  private async postStudentFeeIncome(
+    tx: Prisma.TransactionClient,
+    classLevel: ClassLevel,
+    ethiopianYear: number,
+    month: EthiopianMonth,
+    userId: string,
+  ): Promise<void> {
+    // Resolve account: first active CASH account, fallback to any active account.
+    const account = await tx.account.findFirst({
+      where: { isActive: true, type: 'CASH' },
+      orderBy: { createdAt: 'asc' },
+    }) ?? await tx.account.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!account) return;
+
+    // Sum all PAID payments for this class level / year / month.
+    const agg = await tx.monthlyPayment.aggregate({
+      _sum: { amount: true },
+      where: {
+        status: 'PAID',
+        ethiopianYear,
+        month,
+        student: { class: { level: classLevel } },
+      },
+    });
+    const total = Math.round(Number(agg._sum?.amount ?? 0) * 100) / 100;
+    if (total === 0) return;
+
+    const label = classLevelLabel(classLevel);
+    const description = `Class ${label} fees — ${monthLabel(month)} ${ethiopianYear}`;
+    const referenceNumber = `STUDENT_FEE:${classLevel}:${ethiopianYear}:${month}`;
+
+    // Find existing income row for this class level / year / month.
+    const existing = await tx.income.findFirst({
+      where: { referenceNumber },
+    });
+
+    if (existing) {
+      // Update amount and recompute balance chain forward.
+      const amountDelta = total - Number(existing.amount);
+      if (Math.abs(amountDelta) < 0.01) return; // no change
+
+      await tx.income.update({
+        where: { id: existing.id },
+        data: { amount: total, description },
+      });
+
+      // Recompute running balance for all entries on this account from this
+      // income row's date onward.
+      await this.ledger.recomputeForward(tx, account.id, existing.date);
+
+      await this.audit.log({
+        userId,
+        changedBy: userId,
+        action: 'INCOME_UPDATED:amount',
+        entityType: 'Income',
+        entityId: existing.id,
+        oldValue: { amount: Number(existing.amount) },
+        newValue: { amount: total },
+      });
+    } else {
+      // Create new income row with running balance.
+      const { newBalance } = await this.ledger.apply(tx, account.id, total, 'IN');
+
+      const income = await tx.income.create({
+        data: {
+          date: new Date(),
+          amount: total,
+          category: 'STUDENT_FEES',
+          sourceType: 'STUDENT_FEE',
+          paymentMethod: 'CASH',
+          description,
+          referenceNumber,
+          accountId: account.id,
+          runningBalance: newBalance,
+          recordedById: userId,
+        },
+      });
+
+      await this.audit.log({
+        userId,
+        changedBy: userId,
+        action: 'INCOME_RECORDED',
+        entityType: 'Income',
+        entityId: income.id,
+        newValue: income,
+      });
+    }
+  }
+
+  /**
    * Whole-class bulk recording. Applies the class fee rule per student (or an
    * optional per-student override) for the selected months, reusing the exact
    * same upsert+audit path as single-student recording. The whole batch runs in
-   * one DB transaction. Only marks months PAID/UNPAID — no Income row is created
-   * here; class-level income is aggregated later by the monthly batch job.
+   * one DB transaction. Income is posted in real-time for each payment.
    */
   async recordClassPayments(dto: RecordClassPaymentsDto, userId: string) {
     const students = await this.prisma.student.findMany({
@@ -304,6 +419,7 @@ export class StudentFeesService {
       for (const month of dto.months) {
         const paymentIds: string[] = [];
         let monthTotal = 0;
+        let anyNewlyPaid = false;
 
         for (const s of students) {
           const defaultAmount = baseFeeFor({
@@ -317,7 +433,7 @@ export class StudentFeesService {
               : Math.round(defaultAmount * 100) / 100;
 
           monthTotal += amount;
-          const { payment } = await this.upsertPayment(tx.monthlyPayment, {
+          const { payment, newlyPaid } = await this.upsertPayment(tx.monthlyPayment, {
             studentId: s.id,
             ethiopianYear: dto.ethiopianYear,
             month,
@@ -329,6 +445,18 @@ export class StudentFeesService {
             userId,
           });
           paymentIds.push(payment.id);
+          if (newlyPaid) anyNewlyPaid = true;
+        }
+
+        // Post income once per class level / month after all students are processed.
+        if (anyNewlyPaid) {
+          await this.postStudentFeeIncome(
+            tx,
+            dto.classLevel,
+            dto.ethiopianYear,
+            month,
+            userId,
+          );
         }
 
         const total = Math.round(monthTotal * 100) / 100;
@@ -369,6 +497,55 @@ export class StudentFeesService {
         fullName: s.fullName,
         className: s.class.name,
         parentPhone: s.parentPhone,
+      }));
+  }
+
+  /**
+   * PAID MonthlyPayment records grouped by class level, with student details.
+   * Used by the Income page to show per-student payment breakdown when a
+   * class-level group is expanded.
+   */
+  async getPaymentsByClassLevel() {
+    const payments = await this.prisma.monthlyPayment.findMany({
+      where: { status: 'PAID' },
+      include: {
+        student: {
+          select: { id: true, studentCode: true, fullName: true, class: { select: { level: true, name: true } } },
+        },
+      },
+      orderBy: { paidDate: 'desc' },
+    });
+
+    const groups: Record<string, { classLevel: string; label: string; payments: typeof payments }> = {};
+
+    for (const p of payments) {
+      const level = p.student.class.level;
+      if (!groups[level]) {
+        groups[level] = {
+          classLevel: level,
+          label: classLevelLabel(level),
+          payments: [],
+        };
+      }
+      groups[level].payments.push(p);
+    }
+
+    const order = ['CLASS_1_3', 'CLASS_4_6', 'CLASS_7_12'];
+    return order
+      .filter((k) => groups[k])
+      .map((k) => ({
+        classLevel: groups[k].classLevel,
+        label: groups[k].label,
+        payments: groups[k].payments.map((p) => ({
+          id: p.id,
+          studentCode: p.student.studentCode,
+          studentName: p.student.fullName,
+          ethiopianYear: p.ethiopianYear,
+          month: p.month,
+          amount: Number(p.amount),
+          paidDate: p.paidDate,
+          paymentMethod: p.paymentMethod,
+        })),
       }));
   }
 }

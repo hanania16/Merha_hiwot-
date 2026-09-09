@@ -22,6 +22,11 @@ export class StudentFeesController {
     return this.feesService.getUnpaidThisMonth();
   }
 
+  @Get('payments-by-class')
+  paymentsByClass() {
+    return this.feesService.getPaymentsByClassLevel();
+  }
+
   @Get(':studentId/history')
   history(@Param('studentId') studentId: string) {
     return this.feesService.getStudentPaymentHistory(studentId);

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { formatETB, formatEthiopianDateFromGregorian, ethiopianTodayISO } from '@/lib/ethiopian-calendar';
+import { formatETB, formatEthiopianDateFromGregorian, ethiopianTodayISO, ethiopianMonthStart, ethiopianMonthEnd } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { Modal } from '@/components/ui/Modal';
 import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
+import { EthiopianMonthPicker, getCurrentEthiopianMonth } from '@/components/EthiopianMonthPicker';
 import { useLang } from '@/lib/i18n';
 
 const CATEGORIES = [
@@ -28,21 +29,27 @@ export default function ExpensePage() {
   const [rows, setRows] = useState<ExpenseRow[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const currentMonth = getCurrentEthiopianMonth();
+  const [filterYear, setFilterYear] = useState(currentMonth.year);
+  const [filterMonth, setFilterMonth] = useState(currentMonth.monthOrder);
 
   async function load() {
     setLoading(true);
-    const data = await api.get<ExpenseRow[]>('/finance/expenses');
+    const from = ethiopianMonthStart(filterYear, filterMonth);
+    const to = ethiopianMonthEnd(filterYear, filterMonth);
+    const data = await api.get<ExpenseRow[]>(`/finance/expenses?from=${from}&to=${to}`);
     setRows(data);
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [filterYear, filterMonth]);
 
   return (
     <div>
       <Topbar title={t('expenseManagement')} subtitle={t('expenseManagementSub')} />
 
-      <div className="flex justify-end mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <EthiopianMonthPicker year={filterYear} monthOrder={filterMonth} onChange={(y, m) => { setFilterYear(y); setFilterMonth(m); }} />
         <button className="btn-gold" onClick={() => setOpen(true)}>{t('recordExpense')}</button>
       </div>
 

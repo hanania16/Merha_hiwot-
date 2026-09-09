@@ -90,7 +90,7 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   }, []);
 
   const descriptionRequired = category === 'MISCELLANEOUS';
-  const canSave = !saving && !!amount && !!paymentMethod && !!accountId &&
+  const canSave = !saving && !!amount && !!paymentMethod &&
     (!descriptionRequired || !!description.trim());
 
   async function submit() {

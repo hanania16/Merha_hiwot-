@@ -54,6 +54,7 @@ const DICTIONARY: Record<string, Entry> = {
   female: { en: 'Female', am: 'ሴት' },
   gender: { en: 'Gender', am: 'ፆታ' },
   student: { en: 'Student', am: 'ተማሪ' },
+  studentCode: { en: 'ID', am: 'መለያ' },
   parent: { en: 'Parent', am: 'ወላጅ' },
   age: { en: 'Age', am: 'ዕድሜ' },
   phone: { en: 'Phone', am: 'ስልክ' },
@@ -61,7 +62,6 @@ const DICTIONARY: Record<string, Entry> = {
   exportPdf: { en: 'Export PDF', am: 'PDF አውርድ' },
   category: { en: 'Category', am: 'ምድብ' },
   recordedBy: { en: 'Recorded By', am: 'የመዘገበው' },
-  approvedBy: { en: 'Approved By', am: 'ያጸደቀው' },
   print: { en: 'Print', am: 'አትም' },
 
   // Enums / status labels
@@ -119,7 +119,7 @@ const DICTIONARY: Record<string, Entry> = {
   enterPassword: { en: 'Please enter your password', am: 'እባክዎ የይለፍ ቃልዎን ያስገቡ' },
   incorrectCredentials: { en: 'Incorrect email or password', am: 'የተሳሳተ ኢሜይል ወይም የይለፍ ቃል' },
   unableToSignIn: { en: 'Unable to sign in', am: 'መግባት አልተቻለም' },
-  roles: { en: 'Administrator · Attendance Officer · Finance Officer', am: 'አስተዳዳሪ · የክትትል ኃላፊ · የፋይናንስ ኃላፊ' },
+  roles: { en: 'Administrator · Finance Officer', am: 'አስተዳዳሪ · የፋይናንስ ኃላፊ' },
 
   // Students page
   inactiveStudentsShort: { en: 'Inactive Students', am: 'ንቁ ያልሆኑ ተማሪዎች' },

@@ -2,16 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { canAccessFinance, getCurrentUser } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { formatETB, formatEthiopianDateFromGregorian, ethiopianTodayISO } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { Modal } from '@/components/ui/Modal';
 import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
 import { useLang } from '@/lib/i18n';
+import { ChevronDown } from 'lucide-react';
 
 const PAYMENT_METHODS = ['CASH', 'BANK_TRANSFER'];
-// Student fees are recorded automatically on the 26th of each Ethiopian month,
-// so the manual Student Fee source type is intentionally not offered here.
 const SOURCE_OPTIONS = [
   { value: 'DONATION', sourceType: 'DONATION' },
   { value: 'CHURCH_CONTRIBUTION', sourceType: 'CHURCH_CONTRIBUTION' },
@@ -35,101 +34,174 @@ interface IncomeRow {
   recordedBy: { fullName: string };
 }
 
+interface PaymentDetail {
+  id: string;
+  studentCode: string;
+  studentName: string;
+  ethiopianYear: number;
+  month: string;
+  amount: number;
+  paidDate: string | null;
+  paymentMethod: string | null;
+}
+
+interface ClassPaymentsGroup {
+  classLevel: string;
+  label: string;
+  payments: PaymentDetail[];
+}
+
 export default function IncomePage() {
   const { t } = useLang();
   const [rows, setRows] = useState<IncomeRow[]>([]);
+  const [classPayments, setClassPayments] = useState<ClassPaymentsGroup[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [batchRunning, setBatchRunning] = useState(false);
-  const [batchMsg, setBatchMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const canBatch = canAccessFinance(getCurrentUser());
+  const user = getCurrentUser();
+  const canRecord = user?.role === 'ADMINISTRATOR' || user?.role === 'FINANCE_OFFICER';
 
   async function load() {
     setLoading(true);
-    const data = await api.get<IncomeRow[]>('/finance/income');
-    setRows(data);
+    const [allRows, payments] = await Promise.all([
+      api.get<IncomeRow[]>('/finance/income'),
+      api.get<ClassPaymentsGroup[]>('/finance/student-fees/payments-by-class'),
+    ]);
+    setRows(allRows);
+    setClassPayments(payments);
     setLoading(false);
   }
 
-  async function runFeeBatch() {
-    setBatchRunning(true);
-    setBatchMsg(null);
-    try {
-      const res = await api.post<{ alreadyRecorded: boolean; results: { studentCount: number }[] }>(
-        '/finance/income/record-monthly-class-income',
-      );
-      const booked = (res.results ?? []).reduce((s: number, r: { studentCount: number }) => s + (r.studentCount ?? 0), 0);
-      setBatchMsg({
-        ok: true,
-        text: booked > 0
-          ? t(booked === 1 ? 'feeBatchDoneOne' : 'feeBatchDoneMany', { n: booked })
-          : t('feeBatchIdle'),
-      });
-      await load();
-    } catch (e) {
-      const msg = (e as { message?: string })?.message ?? String(e);
-      setBatchMsg({ ok: false, text: t('feeBatchError', { error: msg }) });
-    } finally {
-      setBatchRunning(false);
-    }
+  useEffect(() => { load(); }, []);
+
+  function toggleGroup(classLevel: string) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(classLevel)) {
+        next.delete(classLevel);
+      } else {
+        next.add(classLevel);
+      }
+      return next;
+    });
   }
 
-  useEffect(() => { load(); }, []);
+  // Filter out STUDENT_FEE rows from the main table (they're shown in the grouped section)
+  const otherRows = rows.filter((r) => r.sourceType !== 'STUDENT_FEE');
 
   return (
     <div>
       <Topbar title={t('incomeManagement')} subtitle={t('incomeManagementSub')} />
 
-      <div className="mb-4 rounded-lg border border-gold/20 bg-gold/5 px-4 py-3 text-xs text-slate">
-        {t('incomeBatchNote')}
-        <span className="font-semibold text-ink"> {t('STUDENT_FEES')} </span>
-        {t('incomeBatchNote2')}
-      </div>
-
       <div className="flex flex-wrap items-center justify-end gap-3 mb-4">
-        {canBatch && (
-          <button
-            className="btn-outline"
-            onClick={runFeeBatch}
-            disabled={batchRunning}
-          >
-            {batchRunning ? t('feeBatchRunning') : t('runFeeBatchNow')}
-          </button>
+        {canRecord && (
+          <button className="btn-gold" onClick={() => setOpen(true)}>{t('recordIncome')}</button>
         )}
-        {batchMsg && (
-          <span className={`text-xs ${batchMsg.ok ? 'text-status-present' : 'text-red-500'}`}>{batchMsg.text}</span>
-        )}
-        <button className="btn-gold" onClick={() => setOpen(true)}>{t('recordIncome')}</button>
       </div>
 
-      <div className="card overflow-x-auto">
-        <table className="table-base">
-          <thead>
-            <tr><th>{t('date')}</th><th>{t('category')}</th><th>{t('description')}</th><th className="hidden md:table-cell">{t('recordedBy')}</th><th className="text-right">{t('amount')}</th></tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td>{formatEthiopianDateFromGregorian(new Date(r.date))}</td>
-                <td>{t(r.category)}</td>
-                <td>
-                  {r.description ?? '—'}
-                  {(r.senderName || r.senderAccountNumber) && (
-                    <p className="text-xs text-slate mt-0.5">
-                      {r.senderName}{r.senderName && r.senderAccountNumber ? ' · ' : ''}{r.senderAccountNumber}
-                    </p>
+      {/* Student Fee Income — grouped by class level */}
+      {classPayments.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold text-ink mb-3">{t('STUDENT_FEES')}</h2>
+          <div className="space-y-3">
+            {classPayments.map((g) => {
+              const isExpanded = expandedGroups.has(g.classLevel);
+              const total = g.payments.reduce((sum, p) => sum + p.amount, 0);
+              return (
+                <div key={g.classLevel} className="card overflow-hidden">
+                  {/* Collapsible header */}
+                  <button
+                    onClick={() => toggleGroup(g.classLevel)}
+                    className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <ChevronDown
+                        size={18}
+                        className={`text-slate transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-ink">{t('class')} {g.label}</p>
+                        <p className="text-xs text-slate">{g.payments.length} {t('records')}</p>
+                      </div>
+                    </div>
+                    <p className="text-lg font-bold text-status-present">{formatETB(total)}</p>
+                  </button>
+
+                  {/* Expanded detail */}
+                  {isExpanded && g.payments.length > 0 && (
+                    <div className="border-t border-slate-100">
+                      <table className="table-base">
+                        <thead>
+                          <tr>
+                            <th>{t('studentCode')}</th>
+                            <th>{t('name')}</th>
+                            <th>{t('month')}</th>
+                            <th>{t('date')}</th>
+                            <th className="hidden md:table-cell">{t('paymentMethod')}</th>
+                            <th className="text-right">{t('amount')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {g.payments.map((p) => (
+                            <tr key={p.id}>
+                              <td className="text-xs font-mono">{p.studentCode}</td>
+                              <td>{p.studentName}</td>
+                              <td className="text-sm">{p.month} {p.ethiopianYear}</td>
+                              <td className="text-sm">
+                                {p.paidDate ? formatEthiopianDateFromGregorian(new Date(p.paidDate)) : '—'}
+                              </td>
+                              <td className="hidden md:table-cell text-sm">{p.paymentMethod ? t(p.paymentMethod) : '—'}</td>
+                              <td className="text-right text-status-present font-medium">{formatETB(p.amount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
-                </td>
-                <td className="hidden md:table-cell">{r.recordedBy?.fullName}</td>
-                <td className="text-right text-status-present font-medium">{formatETB(Number(r.amount))}</td>
-              </tr>
-            ))}
-            {!loading && rows.length === 0 && (
-              <tr><td colSpan={5} className="text-center text-sm text-slate py-8">{t('noIncomeYet')}</td></tr>
-            )}
-          </tbody>
-        </table>
+                  {isExpanded && g.payments.length === 0 && (
+                    <div className="border-t border-slate-100 p-4 text-sm text-slate text-center">
+                      {t('noIncomeYet')}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Other Income */}
+      <div>
+        <h2 className="text-lg font-semibold text-ink mb-3">{t('income')}</h2>
+        <div className="card overflow-x-auto">
+          <table className="table-base">
+            <thead>
+              <tr><th>{t('date')}</th><th>{t('category')}</th><th>{t('description')}</th><th className="hidden md:table-cell">{t('recordedBy')}</th><th className="text-right">{t('amount')}</th></tr>
+            </thead>
+            <tbody>
+              {otherRows.map((r) => (
+                <tr key={r.id}>
+                  <td>{formatEthiopianDateFromGregorian(new Date(r.date))}</td>
+                  <td>{t(r.category)}</td>
+                  <td>
+                    {r.description ?? '—'}
+                    {(r.senderName || r.senderAccountNumber) && (
+                      <p className="text-xs text-slate mt-0.5">
+                        {r.senderName}{r.senderName && r.senderAccountNumber ? ' · ' : ''}{r.senderAccountNumber}
+                      </p>
+                    )}
+                  </td>
+                  <td className="hidden md:table-cell">{r.recordedBy?.fullName}</td>
+                  <td className="text-right text-status-present font-medium">{formatETB(Number(r.amount))}</td>
+                </tr>
+              ))}
+              {!loading && otherRows.length === 0 && (
+                <tr><td colSpan={5} className="text-center text-sm text-slate py-8">{t('noIncomeYet')}</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {open && <IncomeFormModal onClose={() => setOpen(false)} onSaved={() => { setOpen(false); load(); }} />}
@@ -183,7 +255,6 @@ function IncomeFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
           <select className="input" value={source} onChange={(e) => setSource(e.target.value)}>
             {SOURCE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.value)}</option>)}
           </select>
-          <p className="text-xs text-slate mt-1">{t('incomeAutoNote')}</p>
         </div>
         <div>
           <label className="label">{t('paymentMethod')}</label>

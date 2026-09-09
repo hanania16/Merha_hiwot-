@@ -6,6 +6,17 @@ import { QueryFeesDto } from './dto/query-fees.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Role } from '@prisma/client';
+import { IsOptional, IsDateString } from 'class-validator';
+
+class PaymentsByClassQuery {
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+}
 
 @Controller('finance/student-fees')
 export class StudentFeesController {
@@ -23,8 +34,8 @@ export class StudentFeesController {
   }
 
   @Get('payments-by-class')
-  paymentsByClass() {
-    return this.feesService.getPaymentsByClassLevel();
+  paymentsByClass(@Query() query: PaymentsByClassQuery) {
+    return this.feesService.getPaymentsByClassLevel(query.from, query.to);
   }
 
   @Get(':studentId/history')

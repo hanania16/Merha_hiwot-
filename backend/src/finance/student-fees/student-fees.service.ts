@@ -505,9 +505,17 @@ export class StudentFeesService {
    * Used by the Income page to show per-student payment breakdown when a
    * class-level group is expanded.
    */
-  async getPaymentsByClassLevel() {
+  async getPaymentsByClassLevel(from?: string, to?: string) {
     const payments = await this.prisma.monthlyPayment.findMany({
-      where: { status: 'PAID' },
+      where: {
+        status: 'PAID',
+        ...(from || to ? {
+          paidDate: {
+            ...(from ? { gte: new Date(from) } : {}),
+            ...(to ? { lte: new Date(to) } : {}),
+          },
+        } : {}),
+      },
       include: {
         student: {
           select: { id: true, studentCode: true, fullName: true, class: { select: { level: true, name: true } } },

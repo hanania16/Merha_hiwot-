@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
-import { formatETB, formatEthiopianDateFromGregorian, ethiopianTodayISO } from '@/lib/ethiopian-calendar';
+import { formatETB, formatEthiopianDateFromGregorian, ethiopianTodayISO, ethiopianMonthStart, ethiopianMonthEnd } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { Modal } from '@/components/ui/Modal';
 import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
+import { EthiopianMonthPicker, getCurrentEthiopianMonth } from '@/components/EthiopianMonthPicker';
 import { useLang } from '@/lib/i18n';
 import { ChevronDown } from 'lucide-react';
 
@@ -57,22 +58,27 @@ export default function IncomePage() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const currentMonth = getCurrentEthiopianMonth();
+  const [filterYear, setFilterYear] = useState(currentMonth.year);
+  const [filterMonth, setFilterMonth] = useState(currentMonth.monthOrder);
 
   const user = getCurrentUser();
   const canRecord = user?.role === 'ADMINISTRATOR' || user?.role === 'FINANCE_OFFICER';
 
   async function load() {
     setLoading(true);
+    const from = ethiopianMonthStart(filterYear, filterMonth);
+    const to = ethiopianMonthEnd(filterYear, filterMonth);
     const [allRows, payments] = await Promise.all([
-      api.get<IncomeRow[]>('/finance/income'),
-      api.get<ClassPaymentsGroup[]>('/finance/student-fees/payments-by-class'),
+      api.get<IncomeRow[]>(`/finance/income?from=${from}&to=${to}`),
+      api.get<ClassPaymentsGroup[]>(`/finance/student-fees/payments-by-class?from=${from}&to=${to}`),
     ]);
     setRows(allRows);
     setClassPayments(payments);
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [filterYear, filterMonth]);
 
   function toggleGroup(classLevel: string) {
     setExpandedGroups((prev) => {
@@ -93,7 +99,8 @@ export default function IncomePage() {
     <div>
       <Topbar title={t('incomeManagement')} subtitle={t('incomeManagementSub')} />
 
-      <div className="flex flex-wrap items-center justify-end gap-3 mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <EthiopianMonthPicker year={filterYear} monthOrder={filterMonth} onChange={(y, m) => { setFilterYear(y); setFilterMonth(m); }} />
         {canRecord && (
           <button className="btn-gold" onClick={() => setOpen(true)}>{t('recordIncome')}</button>
         )}

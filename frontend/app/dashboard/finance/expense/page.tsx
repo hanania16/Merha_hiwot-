@@ -14,8 +14,6 @@ const CATEGORIES = [
 ];
 const PAYMENT_METHODS = ['CASH', 'BANK_TRANSFER', 'MOBILE_MONEY', 'CHEQUE'];
 
-interface Account { id: string; name: string; type: string; }
-
 interface ExpenseRow {
   id: string;
   date: string;
@@ -84,11 +82,10 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   const [saving, setSaving] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [accountId, setAccountId] = useState('');
-  const [accounts, setAccounts] = useState<Account[]>([]);
 
   useEffect(() => {
-    api.get<Account[]>('/finance/accounts')
-      .then((accs) => { setAccounts(accs); if (accs.length) setAccountId(accs[0].id); })
+    api.get<{ id: string }[]>('/finance/accounts')
+      .then((accs) => { if (accs.length) setAccountId(accs[0].id); })
       .catch(() => {});
   }, []);
 
@@ -125,13 +122,6 @@ function ExpenseFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
           <label className="label">{t('paymentMethod')}</label>
           <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
             {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{t(m)}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="label">{t('account')}</label>
-          <select className="input" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-            {accounts.length === 0 && <option value="">{t('noAccountsAvailable')}</option>}
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </div>
         <div>

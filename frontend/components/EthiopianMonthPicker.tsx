@@ -1,6 +1,6 @@
 'use client';
 
-import { ETHIOPIAN_MONTHS, currentEthiopianYear, toEthiopian } from '@/lib/ethiopian-calendar';
+import { ETHIOPIAN_MONTHS, toEthiopian } from '@/lib/ethiopian-calendar';
 
 interface EthiopianMonthPickerProps {
   year: number;
@@ -9,8 +9,7 @@ interface EthiopianMonthPickerProps {
 }
 
 export function EthiopianMonthPicker({ year, monthOrder, onChange }: EthiopianMonthPickerProps) {
-  const currentYear = currentEthiopianYear();
-  const years = Array.from({ length: currentYear - 2018 + 1 }, (_, i) => 2018 + i);
+  const years = Array.from({ length: 2026 - 2018 + 1 }, (_, i) => 2018 + i);
 
   return (
     <div className="flex items-center gap-2">

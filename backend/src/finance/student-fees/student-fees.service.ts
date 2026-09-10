@@ -183,7 +183,7 @@ export class StudentFeesService {
     const results = [];
     for (const month of dto.months) {
       const total = Math.round(amountPerMonth * 100) / 100;
-      const { payment, newlyPaid } = await this.upsertPayment(this.prisma.monthlyPayment, {
+      const { payment, newlyPaid, amountChanged } = await this.upsertPayment(this.prisma.monthlyPayment, {
         studentId: dto.studentId,
         ethiopianYear: dto.ethiopianYear,
         month,
@@ -195,7 +195,7 @@ export class StudentFeesService {
         userId,
       });
 
-      if (newlyPaid) {
+      if (newlyPaid || amountChanged) {
         await this.postStudentFeeIncome(
           this.prisma,
           student.class.level,
@@ -216,11 +216,13 @@ export class StudentFeesService {
    * and whole-class bulk recording so both produce identical rows and audits.
    * `newlyPaid` is true when the record did not already have PAID status (a new
    * row or an UNPAID→PAID transition) — callers use it to post income.
+   * `amountChanged` is true when an already-PAID row was overwritten with a
+   * different amount — callers use it to re-aggregate the Income row.
    */
   private async upsertPayment(
     monthlyPayment: Prisma.MonthlyPaymentDelegate,
     args: { studentId: string; ethiopianYear: number; month: EthiopianMonth; amount: number; paymentMethod?: PaymentMethod; accountOwner?: string | null; phoneNumber?: string | null; notes?: string; userId: string },
-  ): Promise<{ payment: Prisma.MonthlyPaymentGetPayload<{}>; newlyPaid: boolean }> {
+  ): Promise<{ payment: Prisma.MonthlyPaymentGetPayload<{}>; newlyPaid: boolean; amountChanged: boolean }> {
     const existing = await monthlyPayment.findUnique({
       where: {
         studentId_ethiopianYear_month: {
@@ -277,7 +279,11 @@ export class StudentFeesService {
       newValue: payment,
     });
 
-    return { payment, newlyPaid: !existing || existing.status !== 'PAID' };
+    return {
+      payment,
+      newlyPaid: !existing || existing.status !== 'PAID',
+      amountChanged: !!existing && existing.status === 'PAID' && Number(existing.amount) !== args.amount,
+    };
   }
 
   /**
@@ -433,7 +439,7 @@ export class StudentFeesService {
               : Math.round(defaultAmount * 100) / 100;
 
           monthTotal += amount;
-          const { payment, newlyPaid } = await this.upsertPayment(tx.monthlyPayment, {
+          const { payment, newlyPaid, amountChanged } = await this.upsertPayment(tx.monthlyPayment, {
             studentId: s.id,
             ethiopianYear: dto.ethiopianYear,
             month,
@@ -445,7 +451,7 @@ export class StudentFeesService {
             userId,
           });
           paymentIds.push(payment.id);
-          if (newlyPaid) anyNewlyPaid = true;
+          if (newlyPaid || amountChanged) anyNewlyPaid = true;
         }
 
         // Post income once per class level / month after all students are processed.

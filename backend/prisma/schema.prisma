@@ -107,6 +107,7 @@ enum IncomeSourceType {
   DEBRE_TABOR_FEAST
   NEW_YEAR
   MESKEL_FEAST
+  DEVELOPMENT_DEPART
 }
 
 enum FinanceReportType {

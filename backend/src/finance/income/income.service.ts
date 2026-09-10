@@ -18,6 +18,8 @@ function defaultCategoryFor(sourceType: IncomeSourceType): IncomeCategory {
   switch (sourceType) {
     case IncomeSourceType.STUDENT_FEE:
       return IncomeCategory.STUDENT_FEES;
+    case IncomeSourceType.DEVELOPMENT_DEPART:
+      return IncomeCategory.DEVELOPMENT_DEPART;
     case IncomeSourceType.OTHER:
       return IncomeCategory.OTHERS;
     case IncomeSourceType.DEBRE_TABOR_FEAST:

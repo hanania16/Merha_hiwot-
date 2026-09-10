@@ -18,7 +18,7 @@ const SOURCE_OPTIONS = [
   { value: 'DEBRE_TABOR_FEAST', sourceType: 'DEBRE_TABOR_FEAST' },
   { value: 'NEW_YEAR', sourceType: 'NEW_YEAR' },
   { value: 'MESKEL_FEAST', sourceType: 'MESKEL_FEAST' },
-  { value: 'DEVELOPMENT_DEPART', sourceType: 'OTHER' },
+  { value: 'DEVELOPMENT_DEPART', sourceType: 'DEVELOPMENT_DEPART' },
   { value: 'OTHERS', sourceType: 'OTHER' },
 ];
 

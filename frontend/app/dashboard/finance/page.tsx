@@ -10,7 +10,6 @@ import { useLang } from '@/lib/i18n';
 interface Summary {
   monthlyIncome: number;
   monthlyExpenses: number;
-  currentBalance: number;
   todayIncome: number;
   todayExpenses: number;
   studentFeesCollected: number;
@@ -68,10 +67,12 @@ export default function FinanceDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [reversingId, setReversingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [statementError, setStatementError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
     setError(null);
+    setStatementError(null);
     try {
       const [s, a, accounts] = await Promise.all([
         api.get<Summary>('/finance/dashboard/summary'),
@@ -82,8 +83,12 @@ export default function FinanceDashboardPage() {
       setActivities(a);
       const account = accounts.find((x) => x.isActive) ?? accounts[0];
       if (account) {
-        const st = await api.get<StatementResponse>(`/finance/accounts/${account.id}/statement`);
-        setStatement(st);
+        try {
+          const st = await api.get<StatementResponse>(`/finance/accounts/${account.id}/statement`);
+          setStatement(st);
+        } catch {
+          setStatementError('Failed to load account statement. Please try again later.');
+        }
       } else {
         setStatement(null);
       }
@@ -154,9 +159,15 @@ export default function FinanceDashboardPage() {
         </>
       )}
 
-      {!loading && !statement && (
+      {!loading && !statement && !statementError && (
         <div className="card p-8 text-center text-sm text-slate mb-8">
           {t('noAccountFound')}
+        </div>
+      )}
+
+      {statementError && (
+        <div className="card p-8 text-center text-sm text-red-500 mb-8">
+          {statementError}
         </div>
       )}
 

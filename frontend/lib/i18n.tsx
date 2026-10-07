@@ -321,6 +321,15 @@ const DICTIONARY: Record<string, Entry> = {
   adminOverviewSub: { en: 'Live, synchronized across every module · Ethiopian year {year}', am: 'በሁሉም ሞዱሎች ላይ በቅጽበት፣ የተመሳሰለ · የኢትዮጵያ ዓመት {year}' },
   newRegistrations: { en: 'New Registrations', am: 'አዲስ ምዝገባዎች' },
   outstandingFees: { en: 'Outstanding Fees', am: 'ያልተከፈለ ክፍያ' },
+  // Admin Reports
+  adminReports: { en: 'Admin Reports', am: 'የአስተዳዳሪ ሪፖርቶች' },
+  // Admin dashboard
+  adminReportNotReady: { en: 'This month\'s report hasn\'t been finalized yet. Ask your Finance Officer to save the Monthly Report once the month\'s activity is complete.', am: 'ወርሃዊ ሪፖርት ተለምዶ አልተሳካም። የፋይናንስ ኃላፊን ይደርሱ፦ ወርሃዊ ሪፖርት አሁን የተለከል።' },
+  adminDashboard: { en: 'Admin Dashboard', am: 'የአስተዳዳሪ ዳሽቦርድ' },
+  adminReportLoadFailed: { en: 'Failed to load report', am: 'ሪፖርት አለም።' },
+  incomeTransactions: { en: 'Income Transactions', am: 'ገቢ ተለውሰጥቶች' },
+  expenseTransactions: { en: 'Expense Transactions', am: 'ወጪ ተለውሰጥቶች' },
+  noTransactionsThisMonth: { en: 'No transactions this month yet.', am: 'በዚህ ወር ገቢ ወጪ ተለውሰጥቶች ተለውሰጣል' },
 
   // Notifications
   markAllRead: { en: 'Mark all read', am: 'ሁሉንም እንደተነበቡ ምልክት አድርግ' },

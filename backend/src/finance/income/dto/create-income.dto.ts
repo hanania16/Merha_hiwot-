@@ -31,6 +31,9 @@ export class CreateIncomeDto {
 
   @IsOptional()
   @IsString()
+  /** Sender account number is only applicable for BANK_TRANSFER payments.
+   * CASH payments always have null senderAccountNumber — never collect or store
+   * account details for cash transactions. */
   senderAccountNumber?: string;
 
   @IsOptional()
@@ -39,6 +42,15 @@ export class CreateIncomeDto {
 
   @IsOptional()
   @IsString()
+  /**
+   * referenceNumber format for student-fee income: STUDENT_FEE:CLASS_X_Y:YYYY:MONTH
+   * (e.g., STUDENT_FEE:CLASS_1_3:2019:TIR)
+   * 
+   * This field is only parsed/split by getStudentFeesSummary() for
+   * class-level grouping of student-fee records. Non-student-fee income
+   * (DONATION, DEBRE_TABOR_FEAST, etc.) has no guaranteed format —
+   * downstream code must not assume any specific structure.
+   */
   referenceNumber?: string;
 
   @IsOptional()

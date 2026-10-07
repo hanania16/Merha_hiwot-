@@ -244,18 +244,30 @@ function drawHeader(doc: PDFKit.PDFDocument, report: AuditReport, generatedBy: s
 }
 
 function reportKindPeriodEth(report: AuditReport): string {
-  const { year, month } = toEthiopian(report.period.from);
+  if (report.period.ethiopianYear) {
+    const monthLabel = report.period.month ? amharicMonth(report.period.month) : '';
+    if (report.kind === 'monthly') return `${monthLabel} ${report.period.ethiopianYear} ${LABELS.era}`;
+    return `${report.period.ethiopianYear} ${LABELS.era}`;
+  }
+  const { year, month } = toEthiopian(report.period.from!);
   if (report.kind === 'monthly') return `${amharicMonth(month)} ${year} ${LABELS.era}`;
   return `${year} ${LABELS.era}`;
 }
 
 function reportKindPeriodGreg(report: AuditReport): string {
-  const from = report.period.from;
-  const to = new Date(report.period.to.getTime() - 1);
-  if (report.kind === 'monthly') {
-    return `${from.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}`;
+  if (report.period.from) {
+    const from = report.period.from;
+    const to = new Date(report.period.to!.getTime() - 1);
+    if (report.kind === 'monthly') {
+      return `${from.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}`;
+    }
+    return `${from.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} – ${to.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
   }
-  return `${from.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} – ${to.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
+  if (report.period.ethiopianYear) {
+    if (report.kind === 'monthly') return `Ethiopian ${report.period.ethiopianYear}`;
+    return `Ethiopian ${report.period.ethiopianYear}`;
+  }
+  return '';
 }
 
 const pct = (part: number, total: number) => (total ? `${((part / total) * 100).toFixed(1)}%` : '0.0%');

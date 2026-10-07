@@ -75,9 +75,6 @@ export class StudentFeesService {
         isWorkingMember: s.isWorkingMember,
         monthlySalary: s.monthlySalary ? Number(s.monthlySalary) : null,
       });
-      const selectedMonth = query.month
-        ? s.monthlyPayments.find((p) => p.month === query.month) ?? null
-        : null;
 
       return {
         studentId: s.id,
@@ -100,7 +97,6 @@ export class StudentFeesService {
         monthlyBaseFee: base,
         outstandingBalance: Math.round(unpaidCount * base * 100) / 100,
         months: s.monthlyPayments,
-        selectedMonth,
       };
     });
 
@@ -180,34 +176,36 @@ export class StudentFeesService {
       }
     }
 
-    const results = [];
-    for (const month of dto.months) {
-      const total = Math.round(amountPerMonth * 100) / 100;
-      const { payment, newlyPaid, amountChanged } = await this.upsertPayment(this.prisma.monthlyPayment, {
-        studentId: dto.studentId,
-        ethiopianYear: dto.ethiopianYear,
-        month,
-        amount: total,
-        paymentMethod,
-        accountOwner: dto.accountOwner ?? null,
-        phoneNumber: dto.phoneNumber ?? null,
-        notes: dto.notes,
-        userId,
-      });
-
-      if (newlyPaid || amountChanged) {
-        await this.postStudentFeeIncome(
-          this.prisma,
-          student.class.level,
-          dto.ethiopianYear,
+    return this.prisma.$transaction(async (tx) => {
+      const results = [];
+      for (const month of dto.months) {
+        const total = Math.round(amountPerMonth * 100) / 100;
+        const { payment, newlyPaid, amountChanged } = await this.upsertPayment(tx.monthlyPayment, {
+          studentId: dto.studentId,
+          ethiopianYear: dto.ethiopianYear,
           month,
+          amount: total,
+          paymentMethod,
+          accountOwner: dto.accountOwner ?? null,
+          phoneNumber: dto.phoneNumber ?? null,
+          notes: dto.notes,
           userId,
-        );
-      }
+        });
 
-      results.push(payment);
-    }
-    return results;
+        if (newlyPaid || amountChanged) {
+          await this.postStudentFeeIncome(
+            tx,
+            student.class.level,
+            dto.ethiopianYear,
+            month,
+            userId,
+          );
+        }
+
+        results.push(payment);
+      }
+      return results;
+    });
   }
 
   /**
@@ -371,6 +369,8 @@ export class StudentFeesService {
           accountId: account.id,
           runningBalance: newBalance,
           recordedById: userId,
+          ethiopianYear,
+          ethiopianMonth: month,
         },
       });
 

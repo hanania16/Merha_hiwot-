@@ -57,17 +57,25 @@ function addSummarySheet(workbook: ExcelJS.Workbook, report: AuditReport, genera
   sheet.mergeCells('A1:B1');
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
 
-  const { year, month } = toEthiopian(report.period.from);
-  const from = report.period.from;
-  const to = new Date(report.period.to.getTime() - 1);
-  const periodGreg =
-    report.kind === 'monthly'
+  let periodGreg: string;
+  let periodEth: string;
+  if (report.period.ethiopianYear) {
+    const monthLbl = report.period.month ? amharicMonth(report.period.month) : '';
+    periodEth = report.kind === 'monthly'
+      ? `${monthLbl} ${report.period.ethiopianYear} ${LABELS.era}`
+      : `${report.period.ethiopianYear} ${LABELS.era}`;
+    periodGreg = periodEth;
+  } else {
+    const { year, month } = toEthiopian(report.period.from!);
+    const from = report.period.from!;
+    const to = new Date(report.period.to!.getTime() - 1);
+    periodGreg = report.kind === 'monthly'
       ? from.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
       : `${from.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} – ${to.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
-  const periodEth =
-    report.kind === 'monthly'
+    periodEth = report.kind === 'monthly'
       ? `${amharicMonth(month)} ${year} ${LABELS.era}`
       : `${year} ${LABELS.era}`;
+  }
 
   const items: CellValue[][] = [
     [LABELS.institution, ''],

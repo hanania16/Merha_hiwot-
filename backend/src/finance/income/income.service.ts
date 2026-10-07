@@ -3,8 +3,9 @@ import { AccountType, IncomeCategory, IncomeSourceType, PaymentMethod } from '@p
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { LedgerService } from '../ledger/ledger.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { baseFeeFor } from '../../common/constants/fee-rules';
-import { ETHIOPIAN_MONTHS, monthLabel } from '../../common/constants/ethiopian-calendar';
+import { ETHIOPIAN_MONTHS, monthLabel, toEthiopian } from '../../common/constants/ethiopian-calendar';
 import { CreateIncomeDto } from './dto/create-income.dto';
 import { QueryIncomeDto } from './dto/query-income.dto';
 
@@ -40,18 +41,20 @@ export class IncomeService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private notifications: NotificationsService,
     private ledger: LedgerService,
   ) {}
 
   findAll(query: QueryIncomeDto) {
+    const periodFilter: any = {};
+    if (query.ethiopianYear) {
+      periodFilter.ethiopianYear = parseInt(query.ethiopianYear, 10);
+      if (query.ethiopianMonth) periodFilter.ethiopianMonth = query.ethiopianMonth;
+    }
+
     return this.prisma.income.findMany({
       where: {
-        category: query.category,
-        sourceType: query.sourceType,
-        date: {
-          gte: query.from ? new Date(query.from) : undefined,
-          lte: query.to ? new Date(query.to) : undefined,
-        },
+        ...periodFilter,
       },
       include: {
         recordedBy: { select: { fullName: true } },
@@ -110,6 +113,7 @@ export class IncomeService {
     // other. Corrections are append-only REVERSAL entries, never edits/deletes.
     // Transfer metadata is only stored for bank-transfer income; non-transfer
     // records always persist null so the fields never carry stale values.
+    const eth = toEthiopian(new Date(dto.date));
     const income = await this.prisma.$transaction(async (tx) => {
       const { newBalance } = await this.ledger.apply(tx, accountId, dto.amount, 'IN');
       return tx.income.create({
@@ -129,6 +133,8 @@ export class IncomeService {
           receiptId: dto.receiptId ?? null,
           studentId: dto.studentId ?? null,
           recordedById: userId,
+          ethiopianYear: eth.year,
+          ethiopianMonth: ETHIOPIAN_MONTHS.find((m) => m.order === eth.month)?.value as any,
         },
       });
     });
@@ -222,7 +228,7 @@ export class IncomeService {
    * a reversal row itself can never be reversed.
    */
   async reverse(id: string, userId: string) {
-    const reversal = await this.prisma.$transaction(async (tx) => {
+    const { reversal, original } = await this.prisma.$transaction(async (tx) => {
       const original = await tx.income.findUnique({ where: { id } });
       if (!original) throw new NotFoundException('Income record not found');
       if (original.reversesExpenseId) {
@@ -235,9 +241,9 @@ export class IncomeService {
 
       const { newBalance } = await this.ledger.apply(tx, original.accountId, Number(original.amount), 'OUT');
 
-      return tx.expense.create({
+      const reversal = await tx.expense.create({
         data: {
-          date: new Date(),
+          date: original.date,
           amount: original.amount,
           category: 'REVERSAL',
           paymentMethod: original.paymentMethod,
@@ -247,8 +253,12 @@ export class IncomeService {
           recordedById: userId,
           runningBalance: newBalance,
           reversesIncomeId: original.id,
+          ethiopianYear: original.ethiopianYear,
+          ethiopianMonth: original.ethiopianMonth,
         },
       });
+
+      return { reversal, original };
     });
 
     await this.audit.log({
@@ -259,6 +269,13 @@ export class IncomeService {
       entityId: reversal.id,
       newValue: reversal,
     });
+
+    await this.notifications.create(
+      'REVERSAL',
+      'Income reversed',
+      `Income of ${Number(original.amount).toLocaleString()} ETB (${original.category}) has been reversed.`,
+      { expenseId: reversal.id, originalIncomeId: original.id },
+    );
 
     return reversal;
   }

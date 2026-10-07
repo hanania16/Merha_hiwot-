@@ -2,21 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { getCurrentUser } from '@/lib/auth';
 import { ETHIOPIAN_MONTHS, currentEthiopianYear, FEE_TRACKING_START_YEAR, FEE_TRACKING_START_MONTH_ORDER, formatETB, formatEthiopianDateFromGregorian } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { useLang } from '@/lib/i18n';
 import { RegisterModal, type CreatedStudent } from '@/components/RegisterModal';
-
-interface SelectedMonthRecord {
-  month: string;
-  status: string;
-  baseAmount: number | string;
-  penaltyAmount: number | string;
-  amount: number | string;
-  paidDate: string | null;
-}
 
 interface FeeRow {
   studentId: string;
@@ -39,7 +31,6 @@ interface FeeRow {
   monthlyBaseFee: number;
   outstandingBalance: number;
   months: { month: string; status: string; amount: number | string; ethiopianYear: number }[];
-  selectedMonth: SelectedMonthRecord | null;
 }
 interface ClassGroup { id: string; name: string; }
 
@@ -47,6 +38,8 @@ const num = (v: number | string | null | undefined) => Number(v ?? 0);
 
 export default function StudentFeesPage() {
   const { lang, t } = useLang();
+  const user = getCurrentUser();
+  const canRecord = user?.role === 'ADMINISTRATOR' || user?.role === 'FINANCE_OFFICER';
   const [rows, setRows] = useState<FeeRow[]>([]);
   const [classes, setClasses] = useState<ClassGroup[]>([]);
   const [search, setSearch] = useState('');
@@ -98,7 +91,6 @@ export default function StudentFeesPage() {
         monthlyBaseFee: balance.monthlyBaseFee,
         outstandingBalance: 0,
         months: [],
-        selectedMonth: null,
       };
       setPaymentStudent(row);
     } finally {
@@ -107,7 +99,7 @@ export default function StudentFeesPage() {
   }
 
   useEffect(() => { api.get<ClassGroup[]>('/students/classes').then(setClasses); }, []);
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [classId, status]);
+  useEffect(() => { load(); }, [classId, status, search]);
 
   return (
     <div>
@@ -137,7 +129,7 @@ export default function StudentFeesPage() {
             </select>
           </div>
           <button className="btn-outline" onClick={load}>{t('search')}</button>
-          <button className="btn-gold" onClick={() => setShowRegister(true)}>{t('registerStudentCta')}</button>
+          {canRecord && <button className="btn-gold" onClick={() => setShowRegister(true)}>{t('registerStudentCta')}</button>}
         </div>
       </div>
 
@@ -246,7 +238,7 @@ function RecordPaymentModal({ student, onClose, onSaved }: { student: FeeRow; on
     api.get<Balance>(`/finance/student-fees/${student.studentId}/outstanding-balance`).then(setBalance);
   }, [student.studentId]);
 
-  const feeYears = [2018, 2019, 2020, 2021];
+  const feeYears = Array.from({ length: currentEthiopianYear() - FEE_TRACKING_START_YEAR + 2 }, (_, i) => FEE_TRACKING_START_YEAR + i);
 
   function changeYear(y: number) {
     setYear(y);

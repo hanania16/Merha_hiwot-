@@ -1,15 +1,36 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { currentEthiopianYear } from '../../common/constants/ethiopian-calendar';
+import {
+  currentEthiopianYear,
+  toEthiopian,
+  toGregorian,
+  ETHIOPIAN_MONTHS,
+} from '../../common/constants/ethiopian-calendar';
 
 @Injectable()
 export class FinanceDashboardService {
   constructor(private prisma: PrismaService) {}
 
-  private startOfMonth() {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1);
+  private toUtcMidnight(d: Date): Date {
+    return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   }
+
+  private ethiopianMonthRange(year: number, month: number): { from: Date; to: Date } {
+    const from = this.toUtcMidnight(toGregorian(year, month, 1));
+    const to =
+      month === 13
+        ? this.toUtcMidnight(toGregorian(year + 1, 1, 1))
+        : this.toUtcMidnight(toGregorian(year, month + 1, 1));
+    return { from, to };
+  }
+
+  private ethiopianYearRange(year: number): { from: Date; to: Date } {
+    return {
+      from: this.toUtcMidnight(toGregorian(year, 1, 1)),
+      to: this.toUtcMidnight(toGregorian(year + 1, 1, 1)),
+    };
+  }
+
   private startOfDay() {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -19,37 +40,33 @@ export class FinanceDashboardService {
     d.setHours(23, 59, 59, 999);
     return d;
   }
-  private startOfYear() {
-    return new Date(new Date().getFullYear(), 0, 1);
-  }
 
   async getSummary() {
+    const ethiopianYear = currentEthiopianYear();
+    const { month: ethiopianMonthNum } = toEthiopian(new Date());
+    const ethiopianMonth = ETHIOPIAN_MONTHS.find((m) => m.order === ethiopianMonthNum)?.value as any;
+
     const [
       monthlyIncomeAgg,
       monthlyExpenseAgg,
       todayIncomeAgg,
       todayExpenseAgg,
-      allIncomeAgg,
-      allExpenseAgg,
       yearIncomeAgg,
       yearExpenseAgg,
       studentFeesThisMonthAgg,
     ] = await Promise.all([
-      this.prisma.income.aggregate({ _sum: { amount: true }, where: { date: { gte: this.startOfMonth() } } }),
-      this.prisma.expense.aggregate({ _sum: { amount: true }, where: { date: { gte: this.startOfMonth() } } }),
+      this.prisma.income.aggregate({ _sum: { amount: true }, where: { ethiopianYear, ethiopianMonth } }),
+      this.prisma.expense.aggregate({ _sum: { amount: true }, where: { ethiopianYear, ethiopianMonth } }),
       this.prisma.income.aggregate({ _sum: { amount: true }, where: { date: { gte: this.startOfDay(), lte: this.endOfDay() } } }),
       this.prisma.expense.aggregate({ _sum: { amount: true }, where: { date: { gte: this.startOfDay(), lte: this.endOfDay() } } }),
-      this.prisma.income.aggregate({ _sum: { amount: true } }),
-      this.prisma.expense.aggregate({ _sum: { amount: true } }),
-      this.prisma.income.aggregate({ _sum: { amount: true }, where: { date: { gte: this.startOfYear() } } }),
-      this.prisma.expense.aggregate({ _sum: { amount: true }, where: { date: { gte: this.startOfYear() } } }),
+      this.prisma.income.aggregate({ _sum: { amount: true }, where: { ethiopianYear } }),
+      this.prisma.expense.aggregate({ _sum: { amount: true }, where: { ethiopianYear } }),
       this.prisma.monthlyPayment.aggregate({
         _sum: { amount: true },
-        where: { status: 'PAID', paidDate: { gte: this.startOfMonth() } },
+        where: { status: 'PAID', ethiopianYear, month: ethiopianMonth },
       }),
     ]);
 
-    const ethiopianYear = currentEthiopianYear();
     const activeStudents = await this.prisma.student.findMany({
       where: { status: 'ACTIVE' },
       include: { monthlyPayments: { where: { ethiopianYear } } },
@@ -66,13 +83,9 @@ export class FinanceDashboardService {
       outstanding += totalMonths - paidCount;
     }
 
-    const totalIncome = Number(allIncomeAgg._sum.amount ?? 0);
-    const totalExpense = Number(allExpenseAgg._sum.amount ?? 0);
-
     return {
       monthlyIncome: monthlyIncomeAgg._sum.amount ?? 0,
       monthlyExpenses: monthlyExpenseAgg._sum.amount ?? 0,
-      currentBalance: totalIncome - totalExpense,
       todayIncome: todayIncomeAgg._sum.amount ?? 0,
       todayExpenses: todayExpenseAgg._sum.amount ?? 0,
       studentFeesCollected: studentFeesThisMonthAgg._sum.amount ?? 0,
@@ -86,16 +99,18 @@ export class FinanceDashboardService {
   }
 
   async getMonthlyActivities() {
-    const since = this.startOfMonth();
+    const ethiopianYear = currentEthiopianYear();
+    const { month: ethiopianMonthNum } = toEthiopian(new Date());
+    const ethiopianMonth = ETHIOPIAN_MONTHS.find((m) => m.order === ethiopianMonthNum)?.value as any;
     const [payments, incomes, expenses] = await Promise.all([
       this.prisma.monthlyPayment.findMany({
-        where: { status: 'PAID', paidDate: { gte: since } },
+        where: { status: 'PAID', ethiopianYear, month: ethiopianMonth },
         include: { student: { select: { fullName: true } } },
         orderBy: { paidDate: 'desc' },
         take: 20,
       }),
-      this.prisma.income.findMany({ where: { date: { gte: since } }, orderBy: { date: 'desc' }, take: 20 }),
-      this.prisma.expense.findMany({ where: { date: { gte: since } }, orderBy: { date: 'desc' }, take: 20 }),
+      this.prisma.income.findMany({ where: { ethiopianYear, ethiopianMonth }, orderBy: { date: 'desc' }, take: 20 }),
+      this.prisma.expense.findMany({ where: { ethiopianYear, ethiopianMonth }, orderBy: { date: 'desc' }, take: 20 }),
     ]);
 
     const timeline = [

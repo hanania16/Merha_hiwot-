@@ -6,6 +6,7 @@ import { LedgerService } from '../ledger/ledger.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { QueryExpenseDto } from './dto/query-expense.dto';
+import { ETHIOPIAN_MONTHS, toEthiopian } from '../../common/constants/ethiopian-calendar';
 
 @Injectable()
 export class ExpenseService {
@@ -17,13 +18,21 @@ export class ExpenseService {
   ) {}
 
   findAll(query: QueryExpenseDto) {
+    const periodFilter: any = {};
+    if (query.ethiopianYear) {
+      periodFilter.ethiopianYear = parseInt(query.ethiopianYear, 10);
+      if (query.ethiopianMonth) periodFilter.ethiopianMonth = query.ethiopianMonth;
+    } else if (query.from || query.to) {
+      periodFilter.date = {
+        gte: query.from ? new Date(query.from) : undefined,
+        lte: query.to ? new Date(query.to) : undefined,
+      };
+    }
+
     return this.prisma.expense.findMany({
       where: {
         category: query.category,
-        date: {
-          gte: query.from ? new Date(query.from) : undefined,
-          lte: query.to ? new Date(query.to) : undefined,
-        },
+        ...periodFilter,
       },
       include: {
         recordedBy: { select: { fullName: true } },
@@ -40,6 +49,7 @@ export class ExpenseService {
     // Balance update (Account.currentBalance) + the ledger row (runningBalance)
     // commit atomically under a row lock — no path can update one without the
     // other. Corrections are append-only REVERSAL entries, never edits/deletes.
+    const eth = toEthiopian(new Date(dto.date));
     const expense = await this.prisma.$transaction(async (tx) => {
       const { newBalance } = await this.ledger.apply(tx, dto.accountId, dto.amount, 'OUT');
       return tx.expense.create({
@@ -55,6 +65,8 @@ export class ExpenseService {
           accountId: dto.accountId,
           runningBalance: newBalance,
           recordedById: userId,
+          ethiopianYear: eth.year,
+          ethiopianMonth: ETHIOPIAN_MONTHS.find((m) => m.order === eth.month)?.value as any,
         },
       });
     });
@@ -81,7 +93,7 @@ export class ExpenseService {
    * once, and a reversal row itself can never be reversed.
    */
   async reverse(id: string, userId: string) {
-    const reversal = await this.prisma.$transaction(async (tx) => {
+    const { reversal, original } = await this.prisma.$transaction(async (tx) => {
       const original = await tx.expense.findUnique({ where: { id } });
       if (!original) throw new NotFoundException('Expense record not found');
       if (original.reversesIncomeId) {
@@ -94,9 +106,9 @@ export class ExpenseService {
 
       const { newBalance } = await this.ledger.apply(tx, original.accountId, Number(original.amount), 'IN');
 
-      return tx.income.create({
+      const reversal = await tx.income.create({
         data: {
-          date: new Date(),
+          date: original.date,
           amount: original.amount,
           category: 'REVERSAL',
           sourceType: 'OTHER',
@@ -107,8 +119,12 @@ export class ExpenseService {
           recordedById: userId,
           runningBalance: newBalance,
           reversesExpenseId: original.id,
+          ethiopianYear: original.ethiopianYear,
+          ethiopianMonth: original.ethiopianMonth,
         },
       });
+
+      return { reversal, original };
     });
 
     await this.audit.log({
@@ -119,6 +135,13 @@ export class ExpenseService {
       entityId: reversal.id,
       newValue: reversal,
     });
+
+    await this.notifications.create(
+      'REVERSAL',
+      'Expense reversed',
+      `Expense of ${Number(original.amount).toLocaleString()} ETB (${original.category}) has been reversed.`,
+      { incomeId: reversal.id, originalExpenseId: original.id },
+    );
 
     return reversal;
   }

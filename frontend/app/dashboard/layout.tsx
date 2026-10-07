@@ -19,6 +19,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       router.push('/login');
       return;
     }
+    if (user.role === 'ADMINISTRATOR') {
+      router.push('/dashboard/admin');
+    } else if (user.role === 'FINANCE_OFFICER') {
+      router.push('/dashboard/finance');
+    }
     setReady(true);
   }, [router]);
 

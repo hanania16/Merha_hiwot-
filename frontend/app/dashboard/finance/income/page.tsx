@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
-import { formatETB, formatEthiopianDateFromGregorian, ethiopianTodayISO, ethiopianMonthStart, ethiopianMonthEnd } from '@/lib/ethiopian-calendar';
+import { formatETB, formatEthiopianDateFromGregorian, ethiopianTodayISO, ETHIOPIAN_MONTHS } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { Modal } from '@/components/ui/Modal';
 import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
@@ -67,11 +67,10 @@ export default function IncomePage() {
 
   async function load() {
     setLoading(true);
-    const from = ethiopianMonthStart(filterYear, filterMonth);
-    const to = ethiopianMonthEnd(filterYear, filterMonth);
+    const monthEnum = ETHIOPIAN_MONTHS.find((m) => m.order === filterMonth)?.value ?? '';
     const [allRows, payments] = await Promise.all([
-      api.get<IncomeRow[]>(`/finance/income?from=${from}&to=${to}`),
-      api.get<ClassPaymentsGroup[]>(`/finance/student-fees/payments-by-class?from=${from}&to=${to}`),
+      api.get<IncomeRow[]>(`/finance/income?ethiopianYear=${filterYear}&ethiopianMonth=${monthEnum}`),
+      api.get<ClassPaymentsGroup[]>(`/finance/student-fees/payments-by-class?from=${filterYear}&to=${filterMonth}`),
     ]);
     setRows(allRows);
     setClassPayments(payments);

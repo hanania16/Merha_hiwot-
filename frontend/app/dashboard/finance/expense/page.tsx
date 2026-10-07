@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { formatETB, formatEthiopianDateFromGregorian, ethiopianTodayISO, ethiopianMonthStart, ethiopianMonthEnd } from '@/lib/ethiopian-calendar';
+import { formatETB, formatEthiopianDateFromGregorian, ethiopianTodayISO, ETHIOPIAN_MONTHS } from '@/lib/ethiopian-calendar';
 import { Topbar } from '@/components/layout/Topbar';
 import { Modal } from '@/components/ui/Modal';
 import { EthiopianDatePicker } from '@/components/EthiopianDatePicker';
@@ -35,9 +35,8 @@ export default function ExpensePage() {
 
   async function load() {
     setLoading(true);
-    const from = ethiopianMonthStart(filterYear, filterMonth);
-    const to = ethiopianMonthEnd(filterYear, filterMonth);
-    const data = await api.get<ExpenseRow[]>(`/finance/expenses?from=${from}&to=${to}`);
+    const monthEnum = ETHIOPIAN_MONTHS.find((m) => m.order === filterMonth)?.value ?? '';
+    const data = await api.get<ExpenseRow[]>(`/finance/expenses?ethiopianYear=${filterYear}&ethiopianMonth=${monthEnum}`);
     setRows(data);
     setLoading(false);
   }

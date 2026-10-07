@@ -13,10 +13,9 @@ export class RecordPaymentDto {
   @IsEnum(EthiopianMonth, { each: true })
   months: EthiopianMonth[];
 
-  /** Optional override — defaults to the class/working-member fee rule if omitted. */
   @IsOptional()
   @IsNumber()
-  @Min(0)
+  @Min(0.01)
   amountPerMonth?: number;
 
   /** How the payment was made — defaults to CASH when omitted. */

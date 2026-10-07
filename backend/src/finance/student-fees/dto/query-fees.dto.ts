@@ -1,14 +1,9 @@
-import { IsEnum, IsIn, IsOptional, IsString } from 'class-validator';
-import { EthiopianMonth } from '@prisma/client';
+import { IsIn, IsOptional, IsString } from 'class-validator';
 
 export class QueryFeesDto {
   @IsOptional()
   @IsString()
   classId?: string;
-
-  @IsOptional()
-  @IsEnum(EthiopianMonth)
-  month?: EthiopianMonth;
 
   @IsOptional()
   @IsString()

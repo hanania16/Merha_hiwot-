@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, ReconciliationStatus } from '@prisma/client';
+import { Prisma, ReconciliationStatus, NotificationType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   toGregorian,
@@ -45,10 +45,18 @@ function ethiopianYearRange(year: number): { from: Date; to: Date } {
 export class FinanceReportsService {
   constructor(private prisma: PrismaService) {}
 
-  /** Full audit report for a Gregorian [from, to) window derived from an Ethiopian period. */
-  private async auditRollup(kind: 'monthly' | 'yearly', from: Date, to: Date) {
+  /** Full audit report for an Ethiopian period using ethiopianYear/ethiopianMonth columns. */
+  private async auditRollup(kind: 'monthly' | 'yearly', ethiopianYear: number, month?: number) {
+    const incomeWhere: Prisma.IncomeWhereInput = month
+      ? { ethiopianYear, ethiopianMonth: ETHIOPIAN_MONTHS.find((m) => m.order === month)?.value as any }
+      : { ethiopianYear };
+    const expenseWhere: Prisma.ExpenseWhereInput = month
+      ? { ethiopianYear, ethiopianMonth: ETHIOPIAN_MONTHS.find((m) => m.order === month)?.value as any }
+      : { ethiopianYear };
+
     const [incomes, expenses, accounts, reconsInPeriod, auditLogs, lastStudentFeeBatchTime] = await Promise.all([
-      this.prisma.income.findMany({        where: { date: { gte: from, lt: to } },
+      this.prisma.income.findMany({
+        where: incomeWhere,
         include: {
           account: { select: { id: true, name: true, type: true } },
           student: { select: { id: true, fullName: true, studentCode: true } },
@@ -57,7 +65,7 @@ export class FinanceReportsService {
         orderBy: { date: 'asc' },
       }),
       this.prisma.expense.findMany({
-        where: { date: { gte: from, lt: to } },
+        where: expenseWhere,
         include: {
           account: { select: { id: true, name: true, type: true } },
           recordedBy: { select: { fullName: true } },
@@ -70,7 +78,12 @@ export class FinanceReportsService {
         orderBy: { name: 'asc' },
       }),
       this.prisma.reconciliation.findMany({
-        where: { createdAt: { gte: from, lt: to } },
+        where: {
+          periodEnd: month
+            ? { lt: toGregorian(ethiopianYear, month === 13 ? 1 : month + 1, 1) }
+            : { lt: toGregorian(ethiopianYear + 1, 1, 1) },
+          periodStart: { gte: toGregorian(ethiopianYear, month ?? 1, 1) },
+        },
         include: { account: { select: { name: true } } },
         orderBy: { createdAt: 'asc' },
       }),
@@ -78,7 +91,12 @@ export class FinanceReportsService {
         where: {
           entityType: { in: LEDGER_AUDIT_ENTITY_TYPES },
           reason: { not: null },
-          createdAt: { gte: from, lt: to },
+          createdAt: {
+            gte: toGregorian(ethiopianYear, month ?? 1, 1),
+            lt: month
+              ? toGregorian(ethiopianYear, month === 13 ? 1 : month + 1, 1)
+              : toGregorian(ethiopianYear + 1, 1, 1),
+          },
         },
         include: { changedBy: { select: { fullName: true } } },
         orderBy: { createdAt: 'asc' },
@@ -104,9 +122,12 @@ export class FinanceReportsService {
 
     // 3. Expected vs actual per account — stored Reconciliation, never recomputed.
     //    For each account take the latest reconciliation whose periodEnd <= report end.
+    const periodEnd = month
+      ? toGregorian(ethiopianYear, month === 13 ? 1 : month + 1, 1)
+      : toGregorian(ethiopianYear + 1, 1, 1);
     const latestReconByAccount = new Map<string, (typeof allRecons)[number]>();
     const allRecons = await this.prisma.reconciliation.findMany({
-      where: { periodEnd: { lte: to } },
+      where: { periodEnd: { lte: periodEnd } },
       orderBy: [{ periodEnd: 'desc' }, { createdAt: 'desc' }],
     });
     for (const r of allRecons) {
@@ -210,7 +231,7 @@ export class FinanceReportsService {
 
     return {
       kind,
-      period: { from, to },
+      period: { ethiopianYear, month: month ?? null },
       lastStudentFeeBatchTime,
       summary: {
         totalIncome: round2(totalIncome),
@@ -242,13 +263,11 @@ export class FinanceReportsService {
   }
 
   async monthlyReport(year: number, month: number) {
-    const { from, to } = ethiopianMonthRange(year, month);
-    return this.auditRollup('monthly', from, to);
+    return this.auditRollup('monthly', year, month);
   }
 
   async yearlyReport(year: number) {
-    const { from, to } = ethiopianYearRange(year);
-    return this.auditRollup('yearly', from, to);
+    return this.auditRollup('yearly', year);
   }
 
   /** Last time student fees were swept into class-level STUDENT_FEES income (MAX includedInIncomeAt). */
@@ -357,40 +376,79 @@ export class FinanceReportsService {
       expenseCount: report.summary.expenseCount,
     };
 
-    if (type === 'MONTHLY') {
-      const monthOrder = month ?? toEthiopian(new Date()).month;
-      const monthEnum = ETHIOPIAN_MONTHS.find((m) => m.order === monthOrder)?.value;
-      if (!monthEnum) throw new NotFoundException('Invalid Ethiopian month');
-      const saved = await this.prisma.financeReport.upsert({
-        where: {
-          type_ethiopianYear_month: {
+    const monthEnumMon = type === 'MONTHLY' 
+      ? ETHIOPIAN_MONTHS.find((m) => m.order === (month ?? toEthiopian(new Date()).month))?.value 
+      : undefined;
+    if (type === 'MONTHLY' && !monthEnumMon) throw new NotFoundException('Invalid Ethiopian month');
+
+    const created = type === 'MONTHLY'
+      ? await this.prisma.financeReport.upsert({
+          where: {
+            type_ethiopianYear_month: {
+              type,
+              ethiopianYear,
+              month: monthEnumMon as any,
+            },
+          },
+          update: { summary, data, generatedById },
+          create: {
             type,
             ethiopianYear,
-            month: monthEnum,
+            month: monthEnumMon as any,
+            summary,
+            data,
+            generatedById,
           },
-        },
-        update: { summary, data, generatedById },
-        create: {
-          type,
-          ethiopianYear,
-          month: monthEnum,
-          summary,
-          data,
-          generatedById,
+        })
+      : await this.prisma.financeReport.upsert({
+          where: {
+            type_ethiopianYear_month: {
+              type,
+              ethiopianYear,
+              month: null as any,
+            },
+          },
+          update: { summary, data, generatedById },
+          create: {
+            type,
+            ethiopianYear,
+            month: null as any,
+            summary,
+            data,
+            generatedById,
+          },
+        });
+
+    // Notify Administrators that a report is ready to review
+    // ADMINISTRATOR: null in ROLE_VISIBILITY means all types are visible to Admins
+    // Only notify on create (not update) to avoid spam on corrections
+    // Build period label for notification message
+    let periodLabel: string;
+    if (type === 'MONTHLY' && monthEnumMon) {
+      const monthName = ETHIOPIAN_MONTHS.find((m) => m.value === monthEnumMon)?.label ?? String(monthEnumMon);
+      periodLabel = `${monthName} ${ethiopianYear}`;
+      // Create notification directly via Prisma for Administrators
+      await this.prisma.notification.create({
+        data: {
+          type: 'REPORT_READY' as NotificationType,
+          title: 'Report Ready',
+          message: `Monthly report for ${periodLabel} is ready to review`,
+          metadata: { type, ethiopianYear, month: monthEnumMon },
         },
       });
-      return { ...saved, data, summary };
+    } else if (type === 'YEARLY') {
+      periodLabel = String(ethiopianYear);
+      await this.prisma.notification.create({
+        data: {
+          type: 'REPORT_READY' as NotificationType,
+          title: 'Report Ready',
+          message: `Yearly report for ${periodLabel} is ready to review`,
+          metadata: { type, ethiopianYear },
+        },
+      });
     }
 
-    const existing = await this.prisma.financeReport.findFirst({
-      where: { type: 'YEARLY', ethiopianYear, month: null },
-    });
-    const saved = existing
-      ? await this.prisma.financeReport.update({ where: { id: existing.id }, data: { summary, data, generatedById } })
-      : await this.prisma.financeReport.create({
-          data: { type, ethiopianYear, month: null, summary, data, generatedById },
-        });
-    return { ...saved, data, summary };
+    return { ...created, data, summary };
   }
 
   /** Called by the daily scheduler — auto-snapshots at the end of each Ethiopian month/year. */

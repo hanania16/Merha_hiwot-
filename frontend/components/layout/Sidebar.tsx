@@ -20,12 +20,18 @@ const FINANCE_NAV = [
   { href: '/dashboard/finance/receipts', key: 'receipts', icon: Receipt },
 ];
 
+const ADMIN_NAV = [
+  { href: '/dashboard/admin', key: 'adminReports', icon: LayoutDashboard },
+];
+
 export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const pathname = usePathname();
   const user = getCurrentUser();
   const { t } = useLang();
 
-  const showFinance = user?.role === 'ADMINISTRATOR' || user?.role === 'FINANCE_OFFICER';
+  const showFinance = user?.role === 'FINANCE_OFFICER';
+
+  const showAdmin = user?.role === 'ADMINISTRATOR';
 
   function renderGroup(label: string, items: typeof FINANCE_NAV) {
     return (
@@ -68,6 +74,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
         {showFinance && renderGroup(t('finance'), FINANCE_NAV)}
+        {showAdmin && renderGroup(t('adminReports'), ADMIN_NAV)}
       </nav>
 
       <div className="px-4 py-4 border-t border-white/10">

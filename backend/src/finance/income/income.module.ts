@@ -4,10 +4,11 @@ import { IncomeController } from './income.controller';
 import { IncomeAutoRecordScheduler } from './income.scheduler';
 import { FinanceAuditService } from '../../services/financeAuditService';
 import { LedgerModule } from '../ledger/ledger.module';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Module({
   imports: [LedgerModule],
-  providers: [IncomeService, FinanceAuditService, IncomeAutoRecordScheduler],
+  providers: [IncomeService, FinanceAuditService, IncomeAutoRecordScheduler, NotificationsService],
   controllers: [IncomeController],
   exports: [IncomeService],
 })

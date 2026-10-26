@@ -30,7 +30,9 @@ import {
   Square,
   ChevronRight,
   AlertTriangle,
+  Trophy,
 } from 'lucide-react';
+import TwoPageCertificate from '@/components/certificates/TwoPageCertificate';
 
 interface Student {
   id: string;
@@ -151,9 +153,18 @@ export default function CertificatesPage() {
   const [batchClassLevel, setBatchClassLevel] = useState<string>('CLASS_7_12');
   const [batchSemester, setBatchSemester] = useState<string>('SEMESTER_1');
   const [batchYear, setBatchYear] = useState<number>(2018);
+  const [batchPreviousYear, setBatchPreviousYear] = useState<number>(2017);
+  const [batchScope, setBatchScope] = useState<'BOTH' | 'ALL_TWO_PAGE' | 'TOP_3_ONLY'>('BOTH');
+  const [batchTeacherNote, setBatchTeacherNote] = useState<string>(
+    'ተማሪው በመንፈሳዊ ትምህርቱ ላይ ከፍተኛ ትጋትና ፍላጎት የሚያሳይ፣ በመልካም ስነ-ምግባሩ የተመሰገነ ነው።',
+  );
+  const [batchAdminNote, setBatchAdminNote] = useState<string>(
+    'የቀረበውን የዓመቱን የትምህርት ውጤትና የስነ-ምግባር ምዘና መሠረት በማድረግ ወደ ሚቀጥለው የትምህርት ደረጃ እንዲዘዋወር ተወስኗል።',
+  );
   const [availableCourses, setAvailableCourses] = useState<CourseItem[]>([]);
   const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
   const [batchGrades, setBatchGrades] = useState<any[]>([]);
+  const [batchPrevGrades, setBatchPrevGrades] = useState<any[]>([]);
   const [generatingBatch, setGeneratingBatch] = useState(false);
   const [batchTemplateType, setBatchTemplateType] = useState<CertificateRecord['templateType']>('HONOR_EXCELLENCE');
   const [batchIssueDate, setBatchIssueDate] = useState('ሰኔ 30 ቀን 2018 ዓ.ም');
@@ -161,6 +172,9 @@ export default function CertificatesPage() {
   // Preview Modal for individual certificate
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [previewCert, setPreviewCert] = useState<CertificateRecord | null>(null);
+  const [modalCertTab, setModalCertTab] = useState<'two_page' | 'top3_honor'>('two_page');
+  const [twoPageView, setTwoPageView] = useState<'both' | 'front' | 'back'>('both');
+  const [designerPreviewType, setDesignerPreviewType] = useState<'two_page' | 'top3_honor'>('two_page');
 
   // -------------------------------------------------------------
   // SINGLE CERTIFICATE BUILDER STATE
@@ -212,7 +226,7 @@ export default function CertificatesPage() {
 
   useEffect(() => {
     loadClassCoursesAndGrades();
-  }, [batchClassLevel, batchSemester, batchYear]);
+  }, [batchClassLevel, batchSemester, batchYear, batchPreviousYear]);
 
   async function loadInitialData() {
     try {
@@ -244,15 +258,19 @@ export default function CertificatesPage() {
 
   async function loadClassCoursesAndGrades() {
     try {
-      const [coursesRes, gradesRes, studentsRes] = await Promise.all([
+      const [coursesRes, gradesRes, prevGradesRes, studentsRes] = await Promise.all([
         api.get<CourseItem[]>(`/education/courses?classLevel=${batchClassLevel}`),
         api.get<any[]>(
           `/education/grades?classLevel=${batchClassLevel}&ethiopianYear=${batchYear}&semester=${batchSemester}`,
         ),
+        api.get<any[]>(
+          `/education/grades?classLevel=${batchClassLevel}&ethiopianYear=${batchPreviousYear}&semester=${batchSemester}`,
+        ).catch(() => []),
         api.get<any>(`/students?classLevel=${batchClassLevel}&pageSize=500`),
       ]);
       setAvailableCourses(coursesRes || []);
       setBatchGrades(gradesRes || []);
+      setBatchPrevGrades(prevGradesRes || []);
       const fetchedStudents: Student[] = Array.isArray(studentsRes) ? studentsRes : studentsRes?.data || [];
       setStudents((prev) => {
         const others = prev.filter((s) => s.class?.level !== batchClassLevel);
@@ -288,35 +306,63 @@ export default function CertificatesPage() {
     setSelectedCourseIds([]);
   }
 
-  // Real-time computed class roster with multi-course metrics:
-  // Number of Courses, Sum of points, Average %, and Rank from whole class!
+  // Real-time computed class roster with multi-course 2-year metrics:
+  // Year 1 ({batchPreviousYear}), Year 2 ({batchYear}), and 2-Year Average %
   const computedClassStudents = students
     .filter((s) => s.class?.level === batchClassLevel)
     .map((s) => {
       const studentGrades = batchGrades.filter(
         (g) => g.studentId === s.id && selectedCourseIds.includes(g.courseId),
       );
-      const coursesCount = studentGrades.length;
-      const sum = studentGrades.reduce((acc, g) => acc + Number(g.totalScore), 0);
-      const avg = coursesCount > 0 ? Number((sum / coursesCount).toFixed(2)) : 0;
+      const studentPrevGrades = batchPrevGrades.filter(
+        (g) => g.studentId === s.id && selectedCourseIds.includes(g.courseId),
+      );
 
-      // Grade breakdown map
-      const courseScores: { [courseId: string]: number } = {};
-      studentGrades.forEach((g) => {
-        courseScores[g.courseId] = Number(g.totalScore);
+      const coursesCount = selectedCourseIds.length;
+      const year2Sum = studentGrades.reduce((acc, g) => acc + Number(g.totalScore), 0);
+      const year1Sum = studentPrevGrades.reduce((acc, g) => acc + Number(g.totalScore), 0);
+
+      const y2Avg = studentGrades.length > 0 ? Number((year2Sum / studentGrades.length).toFixed(1)) : 0;
+      const y1Avg = studentPrevGrades.length > 0 ? Number((year1Sum / studentPrevGrades.length).toFixed(1)) : 0;
+
+      let cumulativeAvg = y2Avg;
+      if (studentPrevGrades.length > 0 && studentGrades.length > 0) {
+        cumulativeAvg = Number(((y1Avg + y2Avg) / 2).toFixed(1));
+      } else if (studentPrevGrades.length > 0) {
+        cumulativeAvg = y1Avg;
+      }
+
+      // Grade breakdown map for both years
+      const courseScores: { [courseId: string]: { y1?: number; y2?: number; avg?: number } } = {};
+      selectedCourseIds.forEach((cid) => {
+        const y2g = studentGrades.find((g) => g.courseId === cid);
+        const y1g = studentPrevGrades.find((g) => g.courseId === cid);
+        const y2Score = y2g ? Number(y2g.totalScore) : undefined;
+        const y1Score = y1g ? Number(y1g.totalScore) : undefined;
+        let cAvg: number | undefined = y2Score;
+        if (y1Score !== undefined && y2Score !== undefined) {
+          cAvg = Number(((y1Score + y2Score) / 2).toFixed(1));
+        } else if (y1Score !== undefined) {
+          cAvg = y1Score;
+        }
+        courseScores[cid] = { y1: y1Score, y2: y2Score, avg: cAvg };
       });
 
       return {
         student: s,
         coursesCount,
-        sum,
-        avg,
+        sum: year2Sum > 0 ? year2Sum : (year1Sum > 0 ? year1Sum : 0),
+        year1Sum,
+        year2Sum,
+        y1Avg,
+        y2Avg,
+        avg: cumulativeAvg,
         courseScores,
         isSuspended: s.isSuspended || s.behaviorStatus === 'SUSPENDED',
       };
     })
     // Sort descending by sum/avg to determine Rank
-    .sort((a, b) => b.sum - a.sum);
+    .sort((a, b) => (b.year2Sum || b.sum) - (a.year2Sum || a.sum));
 
   // Assign ranks
   const totalInClass = computedClassStudents.length;
@@ -325,9 +371,11 @@ export default function CertificatesPage() {
     if (idx > 0 && item.sum < computedClassStudents[idx - 1].sum) {
       rankCounter = idx + 1;
     }
+    const isTopThree = rankCounter <= 3;
     return {
       ...item,
       rank: rankCounter,
+      isTopThree,
       rankText: `${rankCounter}ኛ ደረጃ (ከ ${totalInClass} ተማሪዎች)`,
     };
   });
@@ -343,15 +391,19 @@ export default function CertificatesPage() {
         classLevel: batchClassLevel,
         courseIds: selectedCourseIds,
         ethiopianYear: batchYear,
+        previousYear: batchPreviousYear || (batchYear - 1),
         semester: batchSemester,
         templateType: batchTemplateType,
+        certificateScope: batchScope,
+        teacherNote: batchTeacherNote,
+        adminNote: batchAdminNote,
         issueDateEthiopian: batchIssueDate,
       });
 
       setNotification(
         lang === 'am'
-          ? `በ${batchClassLevel} ለ${res.count} ተማሪዎች ሰርተፊኬቶች በድምር ውጤትና በደረጃ ተዘጋጅተዋል!`
-          : `Successfully generated ${res.count} multi-course certificates with class ranks!`,
+          ? `በ${batchClassLevel} ለ${res.count} ተማሪዎች የሁለት ገጽ ሰርተፊኬቶችና ለደረጃ 1-3 የክብር ምስክር ወረቀቶች ተዘጋጅተዋል!`
+          : `Successfully generated ${res.count} certificates (2-Page for all, Special Honor for Top 3)!`,
       );
 
       // Reload certificates
@@ -434,8 +486,69 @@ export default function CertificatesPage() {
 
   function openPreviewCertificate(cert: CertificateRecord) {
     setPreviewCert(cert);
+    setModalCertTab('two_page');
+    setTwoPageView('both');
     setPreviewModalOpen(true);
   }
+
+  const activeDesignerCert: any = {
+    certificateNumber: `MH-CERT-${academicYear}-DRAFT`,
+    recipientNameAmharic: recipientNameAmharic || 'ተማሪ ስም',
+    recipientNameEnglish: recipientNameEnglish || 'Student Name',
+    courseOrClass,
+    academicYear,
+    issueDateEthiopian,
+    titleAmharic,
+    titleEnglish,
+    overallGrade,
+    rankText,
+    numberOfCourses: Number(numberOfCourses) || 4,
+    totalScore: Number(totalScore) || 368,
+    averageScore: Number(averageScore) || 92.0,
+    rankInClass: 1,
+    totalStudentsInClass: 15,
+    customMessageAmharic,
+    bibleVerseAmharic,
+    signatory1Title,
+    signatory1Name,
+    signatory1Signature,
+    signatory2Title,
+    signatory2Name,
+    signatory2Signature,
+    signatory3Title,
+    signatory3Name,
+    signatory3Signature,
+    themeColor,
+    student: {
+      studentCode: 'MH-0001',
+      fullName: recipientNameEnglish || 'Student Name',
+      fullNameAmharic: recipientNameAmharic || 'ተማሪ ስም',
+      gender: 'MALE',
+      age: 12,
+    },
+    courseBreakdown: {
+      year1: academicYear - 1,
+      year2: academicYear,
+      courses: courseBreakdownList.map((c) => ({
+        ...c,
+        year1Score: Math.max(50, c.score - 4),
+        year2Score: c.score,
+        averageScore: c.score,
+      })),
+      year1Total: Number(totalScore) ? Number(totalScore) - 16 : 352,
+      year2Total: Number(totalScore) || 368,
+      averageTotal: Number(totalScore) || 368,
+      year1Average: Number(averageScore) ? Number(averageScore) - 4 : 88.0,
+      year2Average: Number(averageScore) || 92.0,
+      cumulativeAverage: Number(averageScore) || 92.0,
+      teacherNote: 'ተማሪው በመንፈሳዊ ትምህርቱ ላይ ከፍተኛ ትጋትና ፍላጎት የሚያሳይ፣ በመልካም ስነ-ምግባሩ የተመሰገነ ነው።',
+      adminNote: 'የቀረበውን የዓመቱን የትምህርት ውጤትና የስነ-ምግባር ምዘና መሠረት በማድረግ ወደ ሚቀጥለው የትምህርት ደረጃ እንዲዘዋወር ተወስኗል።',
+      conduct: 'አርአያ (Exemplary)',
+      spiritualAttendance: 'ቋሚ (Active)',
+      isTopThree: true,
+      statusText: 'ወደ ሚቀጥለው ክፍል ተዛውሯል (Promoted)',
+    },
+  };
 
   return (
     <div className="space-y-6">
@@ -444,29 +557,46 @@ export default function CertificatesPage() {
         @media print {
           @page {
             size: A4 landscape;
-            margin: 0;
+            margin: 8mm;
           }
-          body {
+          body, html {
             background: white !important;
             margin: 0 !important;
             padding: 0 !important;
+            height: auto !important;
+            overflow: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
-          header, aside, main > div:not(.print-certificate-target), .no-print {
+          header, aside, nav, .no-print {
             display: none !important;
           }
-          .print-certificate-target {
-            display: block !important;
-            position: fixed !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            margin: 0 !important;
-            padding: 18mm !important;
+          .print-page {
+            page-break-after: always !important;
+            break-after: page !important;
             box-shadow: none !important;
             border: none !important;
+            margin: 0 auto !important;
+            width: 100% !important;
+            min-height: 96vh !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
             background: #FCFBF7 !important;
-            z-index: 999999 !important;
+          }
+          .print-page:last-child {
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+          }
+          .print-certificate-target {
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+            box-shadow: none !important;
+            border: none !important;
+            margin: 0 auto !important;
+            width: 100% !important;
+            min-height: 96vh !important;
+            background: #FCFBF7 !important;
           }
         }
       `}</style>
@@ -551,32 +681,106 @@ export default function CertificatesPage() {
         /* TAB 1: BATCH ROSTER CERTIFICATE GENERATOR (Item 4 & 5 Core Feature)       */
         /* ========================================================================= */
         <div className="space-y-5 no-print">
-          {/* Controls: Class Level, Semester, Year */}
+          {/* Controls: Class Level, Semester, 2-Year Selection, Scope & Remarks */}
           <div className="card p-5 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
               <div>
                 <h3 className="font-bold text-sm text-ink flex items-center gap-2">
                   <Award className="text-gold" size={17} />
-                  <span>{lang === 'am' ? 'ደረጃ 1፡ የክፍልና የመንፈቀ ዓመት መረጣ' : 'Step 1: Select Class & Term'}</span>
+                  <span>{lang === 'am' ? 'ደረጃ 1፡ የክፍል፣ የ2 ዓመት የትምህርት ዘመን እና የሰርተፊኬት ዓይነት' : 'Step 1: Class, 2-Year Range & Certificate Mode'}</span>
                 </h3>
                 <p className="text-xs text-slate mt-0.5">
                   {lang === 'am'
-                    ? 'የተማሪዎችን ውጤት ለማጠቃለልና የምስክር ወረቀት ለማዘጋጀት ክፍሉንና መንፈቀ ዓመቱን ይምረጡ'
-                    : 'Choose the class level and semester to aggregate multi-course grades'}
+                    ? 'የተማሪዎችን ውጤት በሁለቱ ዓመታት አጠቃልሎ የሁለት ገጽ ሰርተፊኬት እና ለደረጃ 1-3 የክብር ሰርተፊኬት ለማዘጋጀት ይምረጡ'
+                    : 'Configure class, 2-year academic range for the back-page transcript table, and issuance scope'}
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate">{lang === 'am' ? 'የትምህርት ዘመን:' : 'Year:'}</span>
-                <select
-                  className="input py-1 text-xs font-bold"
-                  value={batchYear}
-                  onChange={(e) => setBatchYear(Number(e.target.value))}
+              {/* 2-Year Selection Inputs */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-slate">{lang === 'am' ? '1ኛ ዓመት:' : 'Year 1:'}</span>
+                  <input
+                    type="number"
+                    className="input py-1 px-2 text-xs font-bold w-20 text-center"
+                    placeholder="2017"
+                    value={batchPreviousYear || ''}
+                    onChange={(e) => setBatchPreviousYear(e.target.value ? Number(e.target.value) : 2017)}
+                  />
+                  <span className="text-xs text-slate">ዓ.ም</span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-slate">{lang === 'am' ? '2ኛ ዓመት (ነባሪ):' : 'Year 2 (Default):'}</span>
+                  <input
+                    type="number"
+                    className="input py-1 px-2 text-xs font-extrabold text-gold w-20 text-center border-gold/40"
+                    placeholder="2018"
+                    value={batchYear || ''}
+                    onChange={(e) => setBatchYear(e.target.value ? Number(e.target.value) : 2018)}
+                  />
+                  <span className="text-xs text-slate">ዓ.ም</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Certificate Scope / Issuance Mode (User Request Item) */}
+            <div>
+              <label className="label text-xs font-bold flex items-center gap-1.5">
+                <Trophy size={14} className="text-gold" />
+                <span>{lang === 'am' ? 'የሰርተፊኬት አወጣጥ ሁኔታ (Issuance Scope)' : 'Certificate Issuance Scope'}</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBatchScope('BOTH')}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    batchScope === 'BOTH'
+                      ? 'border-gold bg-gold/10 ring-2 ring-gold/30 shadow-xs'
+                      : 'border-gray-200 hover:bg-gray-50'
+                  }`}
                 >
-                  <option value={2018}>2018 ዓ.ም</option>
-                  <option value={2017}>2017 ዓ.ም</option>
-                  <option value={2019}>2019 ዓ.ም</option>
-                </select>
+                  <p className="font-bold text-xs text-ink flex items-center gap-1.5">
+                    <span>🏆+📄 ሁለቱንም አዘጋጅ (የተመከረ)</span>
+                  </p>
+                  <p className="text-[10px] text-slate mt-0.5 leading-snug">
+                    ለሁሉም ተማሪዎች የሁለት ገጽ (Front & Back) + ለደረጃ 1-3 ልዩ የክብር ሰርተፊኬት
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBatchScope('ALL_TWO_PAGE')}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    batchScope === 'ALL_TWO_PAGE'
+                      ? 'border-gold bg-gold/10 ring-2 ring-gold/30 shadow-xs'
+                      : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <p className="font-bold text-xs text-ink flex items-center gap-1.5">
+                    <span>📄 የሁለት ገጽ ሰርተፊኬት ብቻ</span>
+                  </p>
+                  <p className="text-[10px] text-slate mt-0.5 leading-snug">
+                    ለሁሉም ተማሪዎች የሁለት ገጽ ውጤት መግለጫና ምስክር ወረቀት
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBatchScope('TOP_3_ONLY')}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    batchScope === 'TOP_3_ONLY'
+                      ? 'border-gold bg-gold/10 ring-2 ring-gold/30 shadow-xs'
+                      : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <p className="font-bold text-xs text-ink flex items-center gap-1.5">
+                    <span>🎖️ የደረጃ 1-3 የክብር ሰርተፊኬት ብቻ</span>
+                  </p>
+                  <p className="text-[10px] text-slate mt-0.5 leading-snug">
+                    ለክፍሉ 1ኛ፣ 2ኛ እና 3ኛ ለወጡ ተማሪዎች ብቻ ነጠላ የክብር ሰርተፊኬት
+                  </p>
+                </button>
               </div>
             </div>
 
@@ -645,6 +849,35 @@ export default function CertificatesPage() {
                 >
                   {lang === 'am' ? 'ዓመታዊ ማጠቃለያ' : 'Year-Round'}
                 </button>
+              </div>
+            </div>
+
+            {/* Teacher Note & Admin Note (for Page 2 Back side) */}
+            <div className="border-t border-gray-100 pt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="label text-[11px] font-bold text-ink flex items-center gap-1">
+                  <span>✍️ የክፍሉ መምህር አስተያየት (Teacher Note on Back Page)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  className="input text-xs"
+                  value={batchTeacherNote}
+                  onChange={(e) => setBatchTeacherNote(e.target.value)}
+                  placeholder="ተማሪው በመንፈሳዊ ትምህርቱ ላይ ያሳየው ትጋት..."
+                />
+              </div>
+
+              <div>
+                <label className="label text-[11px] font-bold text-ink flex items-center gap-1">
+                  <span>🏛️ የትምህርት ክፍል አስተዳደር አስተያየት (Admin Note on Back Page)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  className="input text-xs"
+                  value={batchAdminNote}
+                  onChange={(e) => setBatchAdminNote(e.target.value)}
+                  placeholder="የውጤትና ስነ-ምግባር ምዘና መሠረት በማድረግ..."
+                />
               </div>
             </div>
           </div>
@@ -785,16 +1018,17 @@ export default function CertificatesPage() {
                           {c.nameAmharic}
                         </th>
                       ))}
-                    <th className="w-24 text-center font-bold text-ink">{lang === 'am' ? 'የትምህርት ብዛት' : 'Courses'}</th>
-                    <th className="w-24 text-center font-bold text-ink">{lang === 'am' ? 'ድምር ነጥብ' : 'Total Score'}</th>
-                    <th className="w-24 text-center font-bold text-gold">{lang === 'am' ? 'አማካይ (%)' : 'Average'}</th>
-                    <th className="w-28 text-center font-bold text-ink">{lang === 'am' ? 'ከክፍሉ ደረጃ' : 'Class Rank'}</th>
+                    <th className="w-20 text-center font-bold text-slate">{batchPreviousYear} ድምር</th>
+                    <th className="w-20 text-center font-bold text-ink">{batchYear} ድምር</th>
+                    <th className="w-20 text-center font-extrabold text-gold">{lang === 'am' ? 'አማካይ (%)' : 'Average'}</th>
+                    <th className="w-24 text-center font-bold text-ink">{lang === 'am' ? 'ከክፍሉ ደረጃ' : 'Class Rank'}</th>
+                    <th className="w-36 text-center font-bold text-ink">{lang === 'am' ? 'የሚሰጠው ሰርተፊኬት' : 'Format'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {computedWithRanks.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-xs text-slate">
+                      <td colSpan={9 + availableCourses.length} className="p-8 text-center text-xs text-slate">
                         {lang === 'am' ? 'ምንም ተማሪ አልተገኘም' : 'No students found'}
                       </td>
                     </tr>
@@ -839,8 +1073,17 @@ export default function CertificatesPage() {
                             const sc = item.courseScores[c.id];
                             return (
                               <td key={c.id} className="text-center text-xs font-semibold">
-                                {sc !== undefined ? (
-                                  <span className={sc >= 50 ? 'text-ink' : 'text-rose-600'}>{sc}%</span>
+                                {sc?.avg !== undefined ? (
+                                  <div>
+                                    <span className={sc.avg >= 50 ? 'text-ink font-bold' : 'text-rose-600'}>
+                                      {sc.avg}%
+                                    </span>
+                                    {sc.y1 !== undefined && sc.y2 !== undefined && (
+                                      <span className="block text-[8.5px] text-slate/70">
+                                        {sc.y1}% / {sc.y2}%
+                                      </span>
+                                    )}
+                                  </div>
                                 ) : (
                                   <span className="text-slate/40">—</span>
                                 )}
@@ -848,21 +1091,21 @@ export default function CertificatesPage() {
                             );
                           })}
 
-                        {/* Summary Metrics */}
-                        <td className="text-center text-xs font-bold text-ink">
-                          {item.coursesCount}
+                        {/* 2-Year Summary Metrics */}
+                        <td className="text-center text-xs font-semibold text-slate">
+                          {item.year1Sum > 0 ? item.year1Sum : '—'}
                         </td>
                         <td className="text-center text-xs font-bold text-ink">
-                          {item.sum} / {selectedCourseIds.length * 100}
+                          {item.year2Sum > 0 ? item.year2Sum : '—'}
                         </td>
-                        <td className="text-center text-xs font-extrabold text-gold">
+                        <td className="text-center text-xs font-extrabold text-amber-800">
                           {item.avg}%
                         </td>
                         <td className="text-center">
                           <span
-                            className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
                               item.rank === 1
-                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs'
                                 : item.rank === 2
                                 ? 'bg-slate-100 text-slate-800 border border-slate-300'
                                 : item.rank === 3
@@ -870,8 +1113,20 @@ export default function CertificatesPage() {
                                 : 'bg-gray-100 text-slate'
                             }`}
                           >
-                            {item.rankText}
+                            {item.isTopThree && <span>🏆</span>}
+                            <span>{item.rankText}</span>
                           </span>
+                        </td>
+                        <td className="text-center">
+                          {item.isTopThree ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                              🏆 {lang === 'am' ? 'ደረጃ 1-3 ክብር + 2-ገጽ' : 'Top 3 Honor + 2-Page'}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-slate border border-gray-200">
+                              📄 {lang === 'am' ? 'የ2-ገጽ ሰርተፊኬት' : '2-Page Certificate'}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -1112,237 +1367,276 @@ export default function CertificatesPage() {
           {/* Right Panel: Live Certificate Preview & Print Target (7 cols) */}
           <div className="lg:col-span-7">
             <div className="sticky top-6 space-y-3">
-              <div className="no-print flex items-center justify-between">
-                <span className="text-xs font-bold text-slate flex items-center gap-1.5 uppercase tracking-wider">
-                  <Eye size={14} className="text-gold" />
-                  <span>{lang === 'am' ? 'የሰርተፊኬቱ የቀጥታ እይታ (Live Preview & Print)' : 'Live Certificate Preview'}</span>
-                </span>
+              <div className="no-print flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 bg-amber-50 p-1 rounded-xl border border-amber-200 text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setDesignerPreviewType('two_page')}
+                      className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                        designerPreviewType === 'two_page'
+                          ? 'bg-gold text-ink shadow-2xs font-extrabold'
+                          : 'text-slate hover:text-ink'
+                      }`}
+                    >
+                      <span>📄 የሁለት ገጽ ምስክር ወረቀት</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDesignerPreviewType('top3_honor')}
+                      className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                        designerPreviewType === 'top3_honor'
+                          ? 'bg-amber-600 text-white shadow-2xs font-extrabold'
+                          : 'text-amber-800 hover:text-amber-950'
+                      }`}
+                    >
+                      <Trophy size={13} />
+                      <span>🏆 የደረጃ 1-3 የክብር ሰርተፊኬት</span>
+                    </button>
+                  </div>
+                </div>
+
                 <button
+                  type="button"
                   onClick={handlePrint}
-                  className="btn-gold flex items-center gap-1.5 text-xs py-1.5 px-3 font-bold"
+                  className="btn-gold flex items-center gap-1.5 text-xs py-1.5 px-3.5 font-bold shadow-sm"
                 >
                   <Printer size={14} />
-                  {lang === 'am' ? 'አትም (Print)' : 'Print'}
+                  <span>
+                    {designerPreviewType === 'two_page'
+                      ? 'የሁለት ገጽ ሰርተፊኬት አትም (Duplex Print)'
+                      : 'የክብር ሰርተፊኬት አትም (Print)'}
+                  </span>
                 </button>
               </div>
 
-              {/* The Actual Printable Certificate Frame (A4 Landscape aspect ratio) */}
-              <div
-                className="print-certificate-target w-full bg-[#FCFBF7] text-[#111111] rounded-2xl shadow-xl overflow-hidden border border-gray-200 relative select-none"
-                style={{
-                  aspectRatio: '1.414 / 1', // A4 Landscape ratio
-                  minHeight: '520px',
-                }}
-              >
-                {/* Outer Ethiopian Border with Rosettes */}
-                <div
-                  className="absolute inset-3 border-4 rounded-xl pointer-events-none"
-                  style={{ borderColor: themeColor }}
-                >
-                  {/* Inner Fillet Line */}
-                  <div
-                    className="absolute inset-1.5 border border-dashed rounded-lg"
-                    style={{ borderColor: themeColor }}
+              {/* The Actual Printable Certificate Frame (Two-Page or Top 3 Honor) */}
+              {designerPreviewType === 'two_page' ? (
+                <div className="print-certificate-target w-full">
+                  <TwoPageCertificate
+                    cert={activeDesignerCert}
+                    systemSettings={systemSettings}
+                    viewMode="both"
                   />
-
-                  {/* Corner Ethiopian Cross Ornaments */}
-                  <div className="absolute -top-3.5 -left-3.5 w-7 h-7 bg-[#FCFBF7] flex items-center justify-center font-bold text-base" style={{ color: themeColor }}>
-                    ☩
-                  </div>
-                  <div className="absolute -top-3.5 -right-3.5 w-7 h-7 bg-[#FCFBF7] flex items-center justify-center font-bold text-base" style={{ color: themeColor }}>
-                    ☩
-                  </div>
-                  <div className="absolute -bottom-3.5 -left-3.5 w-7 h-7 bg-[#FCFBF7] flex items-center justify-center font-bold text-base" style={{ color: themeColor }}>
-                    ☩
-                  </div>
-                  <div className="absolute -bottom-3.5 -right-3.5 w-7 h-7 bg-[#FCFBF7] flex items-center justify-center font-bold text-base" style={{ color: themeColor }}>
-                    ☩
-                  </div>
                 </div>
+              ) : (
+                <div
+                  className="print-certificate-target w-full bg-[#FCFBF7] text-[#111111] rounded-2xl shadow-xl overflow-hidden border border-gray-200 relative select-none"
+                  style={{
+                    aspectRatio: '1.414 / 1', // A4 Landscape ratio
+                    minHeight: '520px',
+                  }}
+                >
+                  {/* Outer Ethiopian Border with Rosettes */}
+                  <div
+                    className="absolute inset-3 border-4 rounded-xl pointer-events-none"
+                    style={{ borderColor: themeColor }}
+                  >
+                    {/* Inner Fillet Line */}
+                    <div
+                      className="absolute inset-1.5 border border-dashed rounded-lg"
+                      style={{ borderColor: themeColor }}
+                    />
 
-                {/* Certificate Core Content */}
-                <div className="relative h-full flex flex-col justify-between p-6 sm:p-8 text-center">
-                  {/* Top Header */}
-                  <div>
-                    <div className="flex items-center justify-center gap-2 mb-1">
-                      <span className="text-[11px] sm:text-xs font-bold tracking-widest text-[#555] uppercase">
-                        በስመ አብ ወወልድ ወመንፈስ ቅዱስ አሐዱ አምላክ አሜን
-                      </span>
+                    {/* Corner Ethiopian Cross Ornaments */}
+                    <div className="absolute -top-3.5 -left-3.5 w-7 h-7 bg-[#FCFBF7] flex items-center justify-center font-bold text-base" style={{ color: themeColor }}>
+                      ☩
                     </div>
-
-                    <div className="flex items-center justify-center gap-3">
-                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden border border-amber-300 bg-white/50 shrink-0">
-                        <Image src="/logo.jpg" alt="Logo" width={48} height={48} className="object-cover w-full h-full" />
-                      </div>
-                      <div>
-                        <h2 className="text-xs sm:text-sm font-bold tracking-wide text-ink">
-                          {systemSettings?.churchNameAmharic || 'በኢትዮጵያ ኦርቶዶክስ ተዋሕዶ ቤተ ክርስቲያን'}
-                        </h2>
-                        <h1 className="text-sm sm:text-base font-extrabold tracking-wider" style={{ color: themeColor }}>
-                          {systemSettings?.systemNameAmharic || 'ደብረ አሚን መርሃ ህይወት ሰንበት ትምህርት ቤት'}
-                        </h1>
-                        <p className="text-[9px] sm:text-[11px] text-slate font-medium">
-                          {systemSettings?.systemNameEnglish || 'Merha Hiwot Sunday School'}
-                        </p>
-                      </div>
+                    <div className="absolute -top-3.5 -right-3.5 w-7 h-7 bg-[#FCFBF7] flex items-center justify-center font-bold text-base" style={{ color: themeColor }}>
+                      ☩
                     </div>
-
-                    {/* Certificate Title Badge */}
-                    <div className="mt-2 inline-block">
-                      <div
-                        className="px-5 py-1 rounded-full border-2 inline-flex flex-col items-center shadow-2xs"
-                        style={{
-                          borderColor: themeColor,
-                          backgroundColor: `${themeColor}12`,
-                        }}
-                      >
-                        <span className="text-xs sm:text-sm font-black tracking-wide" style={{ color: themeColor }}>
-                          {titleAmharic}
-                        </span>
-                        <span className="text-[9px] font-semibold text-slate uppercase tracking-wider">
-                          {titleEnglish}
-                        </span>
-                      </div>
+                    <div className="absolute -bottom-3.5 -left-3.5 w-7 h-7 bg-[#FCFBF7] flex items-center justify-center font-bold text-base" style={{ color: themeColor }}>
+                      ☩
+                    </div>
+                    <div className="absolute -bottom-3.5 -right-3.5 w-7 h-7 bg-[#FCFBF7] flex items-center justify-center font-bold text-base" style={{ color: themeColor }}>
+                      ☩
                     </div>
                   </div>
 
-                  {/* Middle Body: Recipient & Citation */}
-                  <div className="my-auto py-1 space-y-1.5">
-                    <p className="text-[10px] sm:text-[11px] text-slate tracking-wide">
-                      ይህ የምስክር ወረቀት በመንፈሳዊ ትምህርቱ ላሳየው ከፍተኛ ትጋትና የላቀ ውጤት ለተማሪ
-                    </p>
-
+                  {/* Certificate Core Content */}
+                  <div className="relative h-full flex flex-col justify-between p-6 sm:p-8 text-center">
+                    {/* Top Header */}
                     <div>
-                      <h3 className="text-lg sm:text-xl font-black text-ink tracking-wide font-serif">
-                        {recipientNameAmharic || 'ተማሪ ስም'}
-                      </h3>
-                      {recipientNameEnglish && (
-                        <p className="text-[10px] font-semibold text-slate font-sans tracking-wider uppercase">
-                          {recipientNameEnglish}
-                        </p>
+                      <div className="flex items-center justify-center gap-2 mb-1">
+                        <span className="text-[11px] sm:text-xs font-bold tracking-widest text-[#555] uppercase">
+                          በስመ አብ ወወልድ ወመንፈስ ቅዱስ አሐዱ አምላክ አሜን
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-center gap-3">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden border border-amber-300 bg-white/50 shrink-0">
+                          <Image src="/logo.jpg" alt="Logo" width={48} height={48} className="object-cover w-full h-full" />
+                        </div>
+                        <div>
+                          <h2 className="text-xs sm:text-sm font-bold tracking-wide text-ink">
+                            {systemSettings?.churchNameAmharic || 'በኢትዮጵያ ኦርቶዶክስ ተዋሕዶ ቤተ ክርስቲያን'}
+                          </h2>
+                          <h1 className="text-sm sm:text-base font-extrabold tracking-wider" style={{ color: themeColor }}>
+                            {systemSettings?.systemNameAmharic || 'ደብረ አሚን መርሃ ህይወት ሰንበት ትምህርት ቤት'}
+                          </h1>
+                          <p className="text-[9px] sm:text-[11px] text-slate font-medium">
+                            {systemSettings?.systemNameEnglish || 'Merha Hiwot Sunday School'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Certificate Title Badge */}
+                      <div className="mt-2 inline-block">
+                        <div
+                          className="px-5 py-1 rounded-full border-2 inline-flex flex-col items-center shadow-2xs"
+                          style={{
+                            borderColor: themeColor,
+                            backgroundColor: `${themeColor}12`,
+                          }}
+                        >
+                          <span className="text-xs sm:text-sm font-black tracking-wide" style={{ color: themeColor }}>
+                            {titleAmharic}
+                          </span>
+                          <span className="text-[9px] font-semibold text-slate uppercase tracking-wider">
+                            {titleEnglish}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Middle Body: Recipient & Citation */}
+                    <div className="my-auto py-1 space-y-1.5">
+                      <p className="text-[10px] sm:text-[11px] text-slate tracking-wide">
+                        ይህ የምስክር ወረቀት በመንፈሳዊ ትምህርቱ ላሳየው ከፍተኛ ትጋትና የላቀ ውጤት ለተማሪ
+                      </p>
+
+                      <div>
+                        <h3 className="text-lg sm:text-xl font-black text-ink tracking-wide font-serif">
+                          {recipientNameAmharic || 'ተማሪ ስም'}
+                        </h3>
+                        {recipientNameEnglish && (
+                          <p className="text-[10px] font-semibold text-slate font-sans tracking-wider uppercase">
+                            {recipientNameEnglish}
+                          </p>
+                        )}
+                      </div>
+
+                      <p className="text-[11px] font-bold text-slate">
+                        {courseOrClass}
+                      </p>
+
+                      {/* 4 Multi-Course Metric Cards (Item 4 Requirements) */}
+                      <div className="max-w-xl mx-auto grid grid-cols-4 gap-2 pt-1">
+                        <div className="p-1.5 bg-white border border-gray-200 rounded-lg shadow-2xs">
+                          <span className="text-[9px] text-slate block leading-tight">የትምህርት ብዛት</span>
+                          <strong className="text-xs font-black text-ink">{numberOfCourses || 4}</strong>
+                        </div>
+                        <div className="p-1.5 bg-white border border-gray-200 rounded-lg shadow-2xs">
+                          <span className="text-[9px] text-slate block leading-tight">ድምር ውጤት</span>
+                          <strong className="text-xs font-black text-ink">{totalScore || 368}</strong>
+                        </div>
+                        <div className="p-1.5 bg-white border border-gray-200 rounded-lg shadow-2xs">
+                          <span className="text-[9px] text-slate block leading-tight">አማካይ ውጤት</span>
+                          <strong className="text-xs font-black text-gold">{averageScore || 92.0}%</strong>
+                        </div>
+                        <div className="p-1.5 bg-white border border-gray-200 rounded-lg shadow-2xs">
+                          <span className="text-[9px] text-slate block leading-tight">ከክፍሉ ደረጃ</span>
+                          <strong className="text-xs font-black text-ink">{rankText?.split('(')[0] || '1ኛ ደረጃ'}</strong>
+                        </div>
+                      </div>
+
+                      {/* Citation text */}
+                      <p className="max-w-xl mx-auto text-[10px] text-ink/80 leading-relaxed px-4">
+                        {customMessageAmharic}
+                      </p>
+
+                      {/* Bible Verse Box */}
+                      {bibleVerseAmharic && (
+                        <div className="max-w-lg mx-auto pt-0.5">
+                          <p className="text-[9px] italic font-serif text-slate border-t border-b border-gray-200 py-0.5 px-4">
+                            {bibleVerseAmharic}
+                          </p>
+                        </div>
                       )}
                     </div>
 
-                    <p className="text-[11px] font-bold text-slate">
-                      {courseOrClass}
-                    </p>
-
-                    {/* 4 Multi-Course Metric Cards (Item 4 Requirements) */}
-                    <div className="max-w-xl mx-auto grid grid-cols-4 gap-2 pt-1">
-                      <div className="p-1.5 bg-white border border-gray-200 rounded-lg shadow-2xs">
-                        <span className="text-[9px] text-slate block leading-tight">የትምህርት ብዛት</span>
-                        <strong className="text-xs font-black text-ink">{numberOfCourses || 4}</strong>
-                      </div>
-                      <div className="p-1.5 bg-white border border-gray-200 rounded-lg shadow-2xs">
-                        <span className="text-[9px] text-slate block leading-tight">ድምር ውጤት</span>
-                        <strong className="text-xs font-black text-ink">{totalScore || 368}</strong>
-                      </div>
-                      <div className="p-1.5 bg-white border border-gray-200 rounded-lg shadow-2xs">
-                        <span className="text-[9px] text-slate block leading-tight">አማካይ ውጤት</span>
-                        <strong className="text-xs font-black text-gold">{averageScore || 92.0}%</strong>
-                      </div>
-                      <div className="p-1.5 bg-white border border-gray-200 rounded-lg shadow-2xs">
-                        <span className="text-[9px] text-slate block leading-tight">ከክፍሉ ደረጃ</span>
-                        <strong className="text-xs font-black text-ink">{rankText?.split('(')[0] || '1ኛ ደረጃ'}</strong>
-                      </div>
-                    </div>
-
-                    {/* Citation text */}
-                    <p className="max-w-xl mx-auto text-[10px] text-ink/80 leading-relaxed px-4">
-                      {customMessageAmharic}
-                    </p>
-
-                    {/* Bible Verse Box */}
-                    {bibleVerseAmharic && (
-                      <div className="max-w-lg mx-auto pt-0.5">
-                        <p className="text-[9px] italic font-serif text-slate border-t border-b border-gray-200 py-0.5 px-4">
-                          {bibleVerseAmharic}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Bottom: Date, Gold Stamp & 3 Digital Signatures (Item 5) */}
-                  <div className="pt-2">
-                    <div className="grid grid-cols-4 items-end text-center gap-2">
-                      {/* Signatory 1: Course / Class Teacher Signature */}
-                      <div className="flex flex-col items-center">
-                        <div className="h-10 flex items-center justify-center">
-                          {signatory1Signature ? (
-                            /* eslint-disable-next-line @next/next/no-img-element */
-                            <img
-                              src={signatory1Signature}
-                              alt="Teacher Signature"
-                              className="max-h-9 max-w-[100px] object-contain"
-                            />
-                          ) : (
-                            <div className="w-16 h-4" />
-                          )}
+                    {/* Bottom: Date, Gold Stamp & 3 Digital Signatures (Item 5) */}
+                    <div className="pt-2">
+                      <div className="grid grid-cols-4 items-end text-center gap-2">
+                        {/* Signatory 1: Course / Class Teacher Signature */}
+                        <div className="flex flex-col items-center">
+                          <div className="h-10 flex items-center justify-center">
+                            {signatory1Signature ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img
+                                src={signatory1Signature}
+                                alt="Teacher Signature"
+                                className="max-h-9 max-w-[100px] object-contain"
+                              />
+                            ) : (
+                              <div className="w-16 h-4" />
+                            )}
+                          </div>
+                          <div className="w-24 sm:w-28 mx-auto border-b border-dashed border-gray-400 mb-0.5" />
+                          <p className="text-[9px] sm:text-[10px] font-bold text-ink">{signatory1Name}</p>
+                          <p className="text-[8px] text-slate">{signatory1Title}</p>
                         </div>
-                        <div className="w-24 sm:w-28 mx-auto border-b border-dashed border-gray-400 mb-0.5" />
-                        <p className="text-[9px] sm:text-[10px] font-bold text-ink">{signatory1Name}</p>
-                        <p className="text-[8px] text-slate">{signatory1Title}</p>
-                      </div>
 
-                      {/* Official Gold Seal Stamp */}
-                      <div className="flex flex-col items-center justify-center">
-                        <div
-                          className="w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 border-double flex flex-col items-center justify-center text-center shadow-xs"
-                          style={{
-                            borderColor: themeColor,
-                            color: themeColor,
-                            backgroundColor: `${themeColor}15`,
-                          }}
-                        >
-                          <span className="text-xs font-bold">☩</span>
-                          <span className="text-[6.5px] font-bold tracking-tighter uppercase leading-tight">
-                            መርሃ ህይወት<br />ማኅተም
-                          </span>
+                        {/* Official Gold Seal Stamp */}
+                        <div className="flex flex-col items-center justify-center">
+                          <div
+                            className="w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 border-double flex flex-col items-center justify-center text-center shadow-xs"
+                            style={{
+                              borderColor: themeColor,
+                              color: themeColor,
+                              backgroundColor: `${themeColor}15`,
+                            }}
+                          >
+                            <span className="text-xs font-bold">☩</span>
+                            <span className="text-[6.5px] font-bold tracking-tighter uppercase leading-tight">
+                              መርሃ ህይወት<br />ማኅተም
+                            </span>
+                          </div>
+                          <span className="text-[7.5px] font-mono text-slate mt-0.5">{issueDateEthiopian}</span>
                         </div>
-                        <span className="text-[7.5px] font-mono text-slate mt-0.5">{issueDateEthiopian}</span>
-                      </div>
 
-                      {/* Signatory 2: Education Dept Head Signature */}
-                      <div className="flex flex-col items-center">
-                        <div className="h-10 flex items-center justify-center">
-                          {signatory2Signature ? (
-                            /* eslint-disable-next-line @next/next/no-img-element */
-                            <img
-                              src={signatory2Signature}
-                              alt="Education Admin Signature"
-                              className="max-h-9 max-w-[100px] object-contain"
-                            />
-                          ) : (
-                            <div className="w-16 h-4" />
-                          )}
+                        {/* Signatory 2: Education Dept Head Signature */}
+                        <div className="flex flex-col items-center">
+                          <div className="h-10 flex items-center justify-center">
+                            {signatory2Signature ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img
+                                src={signatory2Signature}
+                                alt="Education Admin Signature"
+                                className="max-h-9 max-w-[100px] object-contain"
+                              />
+                            ) : (
+                              <div className="w-16 h-4" />
+                            )}
+                          </div>
+                          <div className="w-24 sm:w-28 mx-auto border-b border-dashed border-gray-400 mb-0.5" />
+                          <p className="text-[9px] sm:text-[10px] font-bold text-ink">{signatory2Name}</p>
+                          <p className="text-[8px] text-slate">{signatory2Title}</p>
                         </div>
-                        <div className="w-24 sm:w-28 mx-auto border-b border-dashed border-gray-400 mb-0.5" />
-                        <p className="text-[9px] sm:text-[10px] font-bold text-ink">{signatory2Name}</p>
-                        <p className="text-[8px] text-slate">{signatory2Title}</p>
-                      </div>
 
-                      {/* Signatory 3: Church Sunday School President Signature */}
-                      <div className="flex flex-col items-center">
-                        <div className="h-10 flex items-center justify-center">
-                          {signatory3Signature ? (
-                            /* eslint-disable-next-line @next/next/no-img-element */
-                            <img
-                              src={signatory3Signature}
-                              alt="President Signature"
-                              className="max-h-9 max-w-[100px] object-contain"
-                            />
-                          ) : (
-                            <div className="w-16 h-4" />
-                          )}
+                        {/* Signatory 3: Church Sunday School President Signature */}
+                        <div className="flex flex-col items-center">
+                          <div className="h-10 flex items-center justify-center">
+                            {signatory3Signature ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img
+                                src={signatory3Signature}
+                                alt="President Signature"
+                                className="max-h-9 max-w-[100px] object-contain"
+                              />
+                            ) : (
+                              <div className="w-16 h-4" />
+                            )}
+                          </div>
+                          <div className="w-24 sm:w-28 mx-auto border-b border-dashed border-gray-400 mb-0.5" />
+                          <p className="text-[9px] sm:text-[10px] font-bold text-ink">{signatory3Name}</p>
+                          <p className="text-[8px] text-slate">{signatory3Title}</p>
                         </div>
-                        <div className="w-24 sm:w-28 mx-auto border-b border-dashed border-gray-400 mb-0.5" />
-                        <p className="text-[9px] sm:text-[10px] font-bold text-ink">{signatory3Name}</p>
-                        <p className="text-[8px] text-slate">{signatory3Title}</p>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -1436,113 +1730,280 @@ export default function CertificatesPage() {
       {/* Modal for Previewing and Printing an Individual Certificate from History */}
       <Modal
         open={previewModalOpen}
-        title={previewCert ? `${previewCert.recipientNameAmharic} — ${previewCert.certificateNumber}` : 'Certificate'}
+        title={
+          previewCert
+            ? `${previewCert.recipientNameAmharic} (${previewCert.student?.studentCode || '—'}) — ${previewCert.certificateNumber}`
+            : 'Certificate'
+        }
         onClose={() => setPreviewModalOpen(false)}
       >
         {previewCert && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-              <span className="text-xs text-slate">
-                {lang === 'am' ? 'የተማሪው የምስክር ወረቀት ማተሚያ እይታ' : 'Student Certificate Print Ready'}
-              </span>
-              <button
-                onClick={() => {
-                  window.print();
-                }}
-                className="btn-gold flex items-center gap-1.5 text-xs py-1.5 px-3 font-bold"
-              >
-                <Printer size={14} />
-                {lang === 'am' ? 'አትም (Print)' : 'Print'}
-              </button>
-            </div>
-
-            {/* Certificate Box */}
-            <div
-              className="print-certificate-target w-full bg-[#FCFBF7] text-[#111] p-6 rounded-xl border border-gray-200 text-center relative"
-              style={{ minHeight: '440px' }}
-            >
-              <div className="border-4 rounded-lg p-5 relative" style={{ borderColor: previewCert.themeColor || '#D4AF37' }}>
-                <h2 className="text-xs font-bold text-slate">
-                  {systemSettings?.churchNameAmharic || 'በኢትዮጵያ ኦርቶዶክስ ተዋሕዶ ቤተ ክርስቲያን'}
-                </h2>
-                <h1 className="text-base font-black" style={{ color: previewCert.themeColor || '#D4AF37' }}>
-                  {systemSettings?.systemNameAmharic || 'ደብረ አሚን መርሃ ህይወት ሰንበት ትምህርት ቤት'}
-                </h1>
-                <div className="my-2 inline-block px-4 py-1 rounded-full border border-gold/40 bg-gold/10 text-xs font-black text-ink">
-                  {previewCert.titleAmharic}
-                </div>
-
-                <div className="my-3 space-y-1">
-                  <p className="text-xs text-slate">{lang === 'am' ? 'ይህ የምስክር ወረቀት ለተማሪ' : 'Awarded to'}</p>
-                  <h3 className="text-xl font-black text-ink font-serif">{previewCert.recipientNameAmharic}</h3>
-                  <p className="text-xs font-bold text-slate">{previewCert.courseOrClass}</p>
-                </div>
-
-                {/* 4 Performance Metric Badges */}
-                <div className="max-w-md mx-auto grid grid-cols-4 gap-2 my-3">
-                  <div className="p-1.5 bg-white border border-gray-200 rounded text-center">
-                    <span className="text-[9px] text-slate block">የትምህርት ብዛት</span>
-                    <strong className="text-xs font-bold text-ink">{previewCert.numberOfCourses || '—'}</strong>
+            {/* Top Modal Controls */}
+            <div className="no-print flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2">
+                {previewCert.rankInClass && previewCert.rankInClass <= 3 ? (
+                  <div className="flex items-center gap-1.5 p-1 bg-amber-50 rounded-xl border border-amber-200">
+                    <button
+                      type="button"
+                      onClick={() => setModalCertTab('two_page')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        modalCertTab === 'two_page'
+                          ? 'bg-gold text-ink shadow-sm'
+                          : 'text-slate hover:text-ink'
+                      }`}
+                    >
+                      <span>📄 የሁለት ገጽ ምስክር ወረቀት</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModalCertTab('top3_honor')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${
+                        modalCertTab === 'top3_honor'
+                          ? 'bg-amber-600 text-white shadow-sm'
+                          : 'text-amber-800 hover:text-amber-950'
+                      }`}
+                    >
+                      <Trophy size={13} />
+                      <span>🏆 የደረጃ {previewCert.rankInClass} የክብር ሰርተፊኬት</span>
+                    </button>
                   </div>
-                  <div className="p-1.5 bg-white border border-gray-200 rounded text-center">
-                    <span className="text-[9px] text-slate block">ድምር ነጥብ</span>
-                    <strong className="text-xs font-bold text-ink">{previewCert.totalScore ? Number(previewCert.totalScore) : '—'}</strong>
-                  </div>
-                  <div className="p-1.5 bg-white border border-gray-200 rounded text-center">
-                    <span className="text-[9px] text-slate block">አማካይ ውጤት</span>
-                    <strong className="text-xs font-bold text-gold">{previewCert.averageScore ? `${previewCert.averageScore}%` : previewCert.overallGrade || '—'}</strong>
-                  </div>
-                  <div className="p-1.5 bg-white border border-gray-200 rounded text-center">
-                    <span className="text-[9px] text-slate block">ከክፍሉ ደረጃ</span>
-                    <strong className="text-xs font-bold text-ink">{previewCert.rankText || '—'}</strong>
-                  </div>
-                </div>
+                ) : (
+                  <span className="text-xs font-bold text-ink flex items-center gap-1.5 bg-gray-100 px-3 py-1.5 rounded-lg">
+                    <span>📄 የሁለት ገጽ ምስክር ወረቀትና የውጤት መግለጫ (Front & Back)</span>
+                  </span>
+                )}
+              </div>
 
-                {previewCert.customMessageAmharic && (
-                  <p className="text-xs text-ink/80 max-w-lg mx-auto leading-relaxed my-2">
-                    {previewCert.customMessageAmharic}
-                  </p>
+              {/* View options and Print button */}
+              <div className="flex items-center gap-2">
+                {modalCertTab === 'two_page' && (
+                  <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setTwoPageView('both')}
+                      className={`px-2 py-1 rounded font-bold ${
+                        twoPageView === 'both' ? 'bg-white text-ink shadow-xs' : 'text-slate'
+                      }`}
+                    >
+                      ሁለቱም
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTwoPageView('front')}
+                      className={`px-2 py-1 rounded font-bold ${
+                        twoPageView === 'front' ? 'bg-white text-ink shadow-xs' : 'text-slate'
+                      }`}
+                    >
+                      የፊት ገጽ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTwoPageView('back')}
+                      className={`px-2 py-1 rounded font-bold ${
+                        twoPageView === 'back' ? 'bg-white text-ink shadow-xs' : 'text-slate'
+                      }`}
+                    >
+                      የጀርባ ገጽ
+                    </button>
+                  </div>
                 )}
 
-                {/* 3 Signatures */}
-                <div className="grid grid-cols-3 gap-2 pt-4 border-t border-gray-200 mt-4 text-center items-end">
-                  <div className="flex flex-col items-center">
-                    <div className="h-9 flex items-center justify-center">
-                      {previewCert.signatory1Signature ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img src={previewCert.signatory1Signature} alt="Teacher Sig" className="max-h-8 max-w-[90px] object-contain" />
-                      ) : null}
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="btn-gold flex items-center gap-1.5 text-xs py-1.5 px-3.5 font-bold shadow-sm"
+                >
+                  <Printer size={14} />
+                  <span>
+                    {modalCertTab === 'top3_honor'
+                      ? 'የክብር ሰርተፊኬት አትም'
+                      : 'የሁለት ገጽ ሰርተፊኬት አትም (Duplex Print)'}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Print Container */}
+            <div className="print-printable-area w-full">
+              {modalCertTab === 'two_page' ? (
+                <TwoPageCertificate
+                  cert={previewCert}
+                  systemSettings={systemSettings}
+                  viewMode={twoPageView}
+                />
+              ) : (
+                /* Top 3 Single-Page Honor Certificate */
+                <div
+                  className="print-certificate-target w-full bg-[#FCFBF7] text-[#111111] rounded-2xl shadow-xl overflow-hidden border border-gray-200 relative select-none p-6 sm:p-8 text-center"
+                  style={{
+                    aspectRatio: '1.414 / 1',
+                    minHeight: '520px',
+                  }}
+                >
+                  {/* Ornate Border */}
+                  <div
+                    className="absolute inset-3 border-4 rounded-xl pointer-events-none"
+                    style={{ borderColor: previewCert.themeColor || '#D4AF37' }}
+                  >
+                    <div
+                      className="absolute inset-1.5 border border-dashed rounded-lg"
+                      style={{ borderColor: previewCert.themeColor || '#D4AF37' }}
+                    />
+                    <div className="absolute -top-3.5 -left-3.5 w-7 h-7 bg-[#FCFBF7] flex items-center justify-center font-bold text-base" style={{ color: previewCert.themeColor || '#D4AF37' }}>
+                      ☩
                     </div>
-                    <div className="w-24 border-b border-dashed border-gray-400 mb-0.5" />
-                    <p className="text-[10px] font-bold text-ink">{previewCert.signatory1Name}</p>
-                    <p className="text-[8px] text-slate">{previewCert.signatory1Title}</p>
+                    <div className="absolute -top-3.5 -right-3.5 w-7 h-7 bg-[#FCFBF7] flex items-center justify-center font-bold text-base" style={{ color: previewCert.themeColor || '#D4AF37' }}>
+                      ☩
+                    </div>
+                    <div className="absolute -bottom-3.5 -left-3.5 w-7 h-7 bg-[#FCFBF7] flex items-center justify-center font-bold text-base" style={{ color: previewCert.themeColor || '#D4AF37' }}>
+                      ☩
+                    </div>
+                    <div className="absolute -bottom-3.5 -right-3.5 w-7 h-7 bg-[#FCFBF7] flex items-center justify-center font-bold text-base" style={{ color: previewCert.themeColor || '#D4AF37' }}>
+                      ☩
+                    </div>
                   </div>
 
-                  <div className="flex flex-col items-center">
-                    <div className="h-9 flex items-center justify-center">
-                      {previewCert.signatory2Signature ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img src={previewCert.signatory2Signature} alt="Education Sig" className="max-h-8 max-w-[90px] object-contain" />
-                      ) : null}
-                    </div>
-                    <div className="w-24 border-b border-dashed border-gray-400 mb-0.5" />
-                    <p className="text-[10px] font-bold text-ink">{previewCert.signatory2Name}</p>
-                    <p className="text-[8px] text-slate">{previewCert.signatory2Title}</p>
-                  </div>
+                  <div className="relative h-full flex flex-col justify-between p-4 text-center">
+                    <div>
+                      <span className="text-[11px] font-bold tracking-widest text-[#555] uppercase block font-serif">
+                        በስመ አብ ወወልድ ወመንፈስ ቅዱስ አሐዱ አምላክ አሜን
+                      </span>
+                      <div className="flex items-center justify-center gap-3 mt-1">
+                        <div className="w-12 h-12 rounded-full overflow-hidden border border-amber-300 bg-white/50 shrink-0">
+                          <Image src={systemSettings?.logoUrl || '/logo.jpg'} alt="Logo" width={48} height={48} className="object-cover w-full h-full" />
+                        </div>
+                        <div>
+                          <h2 className="text-xs sm:text-sm font-bold tracking-wide text-ink">
+                            {systemSettings?.churchNameAmharic || 'በኢትዮጵያ ኦርቶዶክስ ተዋሕዶ ቤተ ክርስቲያን'}
+                          </h2>
+                          <h1 className="text-sm sm:text-base font-extrabold tracking-wider" style={{ color: previewCert.themeColor || '#D4AF37' }}>
+                            {systemSettings?.systemNameAmharic || 'ደብረ አሚን መርሃ ህይወት ሰንበት ትምህርት ቤት'}
+                          </h1>
+                          <p className="text-[9px] text-slate font-medium">
+                            {systemSettings?.systemNameEnglish || 'Merha Hiwot Sunday School'}
+                          </p>
+                        </div>
+                      </div>
 
-                  <div className="flex flex-col items-center">
-                    <div className="h-9 flex items-center justify-center">
-                      {previewCert.signatory3Signature ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img src={previewCert.signatory3Signature} alt="Admin Sig" className="max-h-8 max-w-[90px] object-contain" />
-                      ) : null}
+                      {/* Title Badge */}
+                      <div className="mt-2 inline-block">
+                        <div
+                          className="px-5 py-1 rounded-full border-2 inline-flex flex-col items-center shadow-2xs"
+                          style={{
+                            borderColor: previewCert.themeColor || '#D4AF37',
+                            backgroundColor: `${previewCert.themeColor || '#D4AF37'}15`,
+                          }}
+                        >
+                          <span className="text-xs sm:text-sm font-black tracking-wide flex items-center gap-1.5" style={{ color: previewCert.themeColor || '#D4AF37' }}>
+                            <Trophy size={14} />
+                            <span>{previewCert.titleAmharic || 'የክብርና የላቀ ውጤት ምስክር ወረቀት'}</span>
+                          </span>
+                          <span className="text-[8.5px] font-semibold text-slate uppercase tracking-wider">
+                            {previewCert.titleEnglish || 'Certificate of Academic Excellence'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="w-24 border-b border-dashed border-gray-400 mb-0.5" />
-                    <p className="text-[10px] font-bold text-ink">{previewCert.signatory3Name}</p>
-                    <p className="text-[8px] text-slate">{previewCert.signatory3Title}</p>
+
+                    {/* Recipient */}
+                    <div className="my-auto py-2 space-y-1">
+                      <p className="text-[10px] text-slate">ይህ የምስክር ወረቀት በመንፈሳዊ ትምህርቱ ላሳየው ከፍተኛ ትጋትና የላቀ ውጤት ለተማሪ</p>
+                      <h3 className="text-xl font-black text-ink tracking-wide font-serif">
+                        {previewCert.recipientNameAmharic}
+                      </h3>
+                      <p className="text-[11px] font-bold text-slate">{previewCert.courseOrClass}</p>
+
+                      {/* 4 Metric Badges */}
+                      <div className="max-w-md mx-auto grid grid-cols-4 gap-2 pt-1">
+                        <div className="p-1.5 bg-white border border-gray-200 rounded text-center">
+                          <span className="text-[9px] text-slate block">የትምህርት ብዛት</span>
+                          <strong className="text-xs font-bold text-ink">{previewCert.numberOfCourses || '—'}</strong>
+                        </div>
+                        <div className="p-1.5 bg-white border border-gray-200 rounded text-center">
+                          <span className="text-[9px] text-slate block">ድምር ነጥብ</span>
+                          <strong className="text-xs font-bold text-ink">{previewCert.totalScore ? Number(previewCert.totalScore) : '—'}</strong>
+                        </div>
+                        <div className="p-1.5 bg-white border border-gray-200 rounded text-center">
+                          <span className="text-[9px] text-slate block">አማካይ ውጤት</span>
+                          <strong className="text-xs font-bold text-gold">{previewCert.averageScore ? `${previewCert.averageScore}%` : '—'}</strong>
+                        </div>
+                        <div className="p-1.5 bg-white border border-gray-200 rounded text-center">
+                          <span className="text-[9px] text-slate block">ከክፍሉ ደረጃ</span>
+                          <strong className="text-xs font-bold text-ink flex items-center justify-center gap-0.5">
+                            <Trophy size={11} className="text-gold" />
+                            <span>{previewCert.rankText?.split('(')[0] || '1ኛ ደረጃ'}</span>
+                          </strong>
+                        </div>
+                      </div>
+
+                      {previewCert.customMessageAmharic && (
+                        <p className="max-w-lg mx-auto text-[10.5px] text-ink/80 leading-relaxed px-4 pt-1">
+                          {previewCert.customMessageAmharic}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* 3 Signatures & Seal */}
+                    <div className="pt-2">
+                      <div className="grid grid-cols-4 items-end text-center gap-2">
+                        <div className="flex flex-col items-center">
+                          <div className="h-8 flex items-center justify-center">
+                            {previewCert.signatory1Signature ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img src={previewCert.signatory1Signature} alt="Sig" className="max-h-7 max-w-[90px] object-contain" />
+                            ) : null}
+                          </div>
+                          <div className="w-24 border-b border-dashed border-gray-400 mb-0.5" />
+                          <p className="text-[9px] font-bold text-ink">{previewCert.signatory1Name}</p>
+                          <p className="text-[8px] text-slate">{previewCert.signatory1Title}</p>
+                        </div>
+
+                        <div className="flex flex-col items-center justify-center">
+                          <div
+                            className="w-11 h-11 rounded-full border-2 border-double flex flex-col items-center justify-center text-center shadow-xs"
+                            style={{
+                              borderColor: previewCert.themeColor || '#D4AF37',
+                              color: previewCert.themeColor || '#D4AF37',
+                              backgroundColor: `${previewCert.themeColor || '#D4AF37'}15`,
+                            }}
+                          >
+                            <span className="text-[9px] font-bold">☩</span>
+                            <span className="text-[5.5px] font-bold tracking-tighter uppercase leading-tight">
+                              መርሃ ህይወት<br />ማኅተም
+                            </span>
+                          </div>
+                          <span className="text-[7px] font-mono text-slate mt-0.5">{previewCert.issueDateEthiopian}</span>
+                        </div>
+
+                        <div className="flex flex-col items-center">
+                          <div className="h-8 flex items-center justify-center">
+                            {previewCert.signatory2Signature ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img src={previewCert.signatory2Signature} alt="Sig" className="max-h-7 max-w-[90px] object-contain" />
+                            ) : null}
+                          </div>
+                          <div className="w-24 border-b border-dashed border-gray-400 mb-0.5" />
+                          <p className="text-[9px] font-bold text-ink">{previewCert.signatory2Name}</p>
+                          <p className="text-[8px] text-slate">{previewCert.signatory2Title}</p>
+                        </div>
+
+                        <div className="flex flex-col items-center">
+                          <div className="h-8 flex items-center justify-center">
+                            {previewCert.signatory3Signature ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img src={previewCert.signatory3Signature} alt="Sig" className="max-h-7 max-w-[90px] object-contain" />
+                            ) : null}
+                          </div>
+                          <div className="w-24 border-b border-dashed border-gray-400 mb-0.5" />
+                          <p className="text-[9px] font-bold text-ink">{previewCert.signatory3Name}</p>
+                          <p className="text-[8px] text-slate">{previewCert.signatory3Title}</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         )}

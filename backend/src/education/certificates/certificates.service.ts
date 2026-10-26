@@ -41,13 +41,17 @@ export interface GenerateClassCertificatesDto {
   classId?: string;
   courseIds: string[];
   ethiopianYear?: number;
+  previousYear?: number;
   semester?: AcademicSemester;
   templateType?: CertificateTemplate;
+  certificateScope?: 'ALL_TWO_PAGE' | 'TOP_3_ONLY' | 'BOTH';
   titleAmharic?: string;
   titleEnglish?: string;
   issueDateEthiopian?: string;
   customMessageAmharic?: string;
   bibleVerseAmharic?: string;
+  teacherNote?: string;
+  adminNote?: string;
   signatory1Title?: string;
   signatory1Name?: string;
   signatory1Signature?: string;
@@ -194,10 +198,12 @@ export class CertificatesService {
 
   /**
    * Generates certificates in bulk for a whole class from submitted course rosters.
-   * Calculates: Number of courses, Sum of total points, Average %, and Rank from whole class!
+   * Calculates: 2 Years of grades (Year 1, Year 2, and 2-Year Average), Sum of total points,
+   * Cumulative Average %, Class Ranks, Teacher/Admin notes, and Top 3 Honor distinctions!
    */
   async generateClassCertificates(dto: GenerateClassCertificatesDto, userId: string) {
-    const year = dto.ethiopianYear ?? 2018;
+    const year2 = dto.ethiopianYear ?? 2018;
+    const year1 = dto.previousYear ?? (year2 - 1);
     const semester = dto.semester ?? AcademicSemester.SEMESTER_1;
 
     // 1. Find class and students
@@ -218,13 +224,21 @@ export class CertificatesService {
       throw new NotFoundException('No active students found in the selected class');
     }
 
-    // 2. Fetch grades for these courses
+    // 2. Fetch selected courses
+    const selectedCourses = await this.prisma.course.findMany({
+      where: { id: { in: dto.courseIds } },
+      include: {
+        teacher: { select: { fullName: true, signatureUrl: true } },
+      },
+      orderBy: [{ code: 'asc' }],
+    });
+
+    // 3. Fetch grades for both year1 and year2
     const grades = await this.prisma.studentGrade.findMany({
       where: {
         studentId: { in: students.map((s) => s.id) },
         courseId: { in: dto.courseIds },
-        ethiopianYear: year,
-        semester,
+        ethiopianYear: { in: [year1, year2] },
       },
       include: {
         course: {
@@ -240,14 +254,13 @@ export class CertificatesService {
       },
     });
 
-    // 3. Resolve default signatures if not explicitly provided
+    // 4. Resolve default signatures if not explicitly provided
     let defaultSignatory1Signature = dto.signatory1Signature || null;
     let defaultSignatory2Signature = dto.signatory2Signature || null;
     let defaultSignatory3Signature = dto.signatory3Signature || null;
 
     if (!defaultSignatory1Signature) {
-      // Pick first course teacher's signature
-      const teacherWithSig = grades.find((g) => g.course?.teacher?.signatureUrl)?.course?.teacher;
+      const teacherWithSig = selectedCourses.find((c) => c.teacher?.signatureUrl)?.teacher;
       if (teacherWithSig?.signatureUrl) {
         defaultSignatory1Signature = teacherWithSig.signatureUrl;
       }
@@ -267,34 +280,69 @@ export class CertificatesService {
       }
     }
 
-    // 4. Compute metrics for each student
+    // 5. Compute metrics for each student across the 2 years
     const studentMetrics = students.map((student) => {
-      const studentGrades = grades.filter((g) => g.studentId === student.id);
-      const numberOfCourses = studentGrades.length;
-      const totalScore = studentGrades.reduce((sum, g) => sum + Number(g.totalScore), 0);
-      const averageScore = numberOfCourses > 0 ? Number((totalScore / numberOfCourses).toFixed(2)) : 0;
-      const overallGrade = computeGrade(averageScore);
+      const courseBreakdownList = selectedCourses.map((c) => {
+        const y1g = grades.find(
+          (g) => g.studentId === student.id && g.courseId === c.id && g.ethiopianYear === year1,
+        );
+        const y2g = grades.find(
+          (g) => g.studentId === student.id && g.courseId === c.id && g.ethiopianYear === year2,
+        );
 
-      const courseBreakdown = studentGrades.map((g) => ({
-        courseId: g.courseId,
-        code: g.course.code,
-        name: g.course.name,
-        nameAmharic: g.course.nameAmharic,
-        score: Number(g.totalScore),
-        letterGrade: g.letterGrade || computeGrade(Number(g.totalScore)),
-      }));
+        const year1Score = y1g ? Number(y1g.totalScore) : null;
+        const year2Score = y2g ? Number(y2g.totalScore) : null;
+
+        let avgScore = 0;
+        if (year1Score !== null && year2Score !== null) {
+          avgScore = Number(((year1Score + year2Score) / 2).toFixed(1));
+        } else if (year2Score !== null) {
+          avgScore = year2Score;
+        } else if (year1Score !== null) {
+          avgScore = year1Score;
+        }
+
+        return {
+          courseId: c.id,
+          code: c.code,
+          name: c.name,
+          nameAmharic: c.nameAmharic,
+          year1Score,
+          year2Score,
+          averageScore: avgScore,
+          score: avgScore, // backward compatibility
+          letterGrade: computeGrade(avgScore),
+        };
+      });
+
+      const y1Courses = courseBreakdownList.filter((cb) => cb.year1Score !== null);
+      const y2Courses = courseBreakdownList.filter((cb) => cb.year2Score !== null);
+
+      const year1Total = y1Courses.reduce((sum, cb) => sum + (cb.year1Score || 0), 0);
+      const year2Total = y2Courses.reduce((sum, cb) => sum + (cb.year2Score || 0), 0);
+      const avgTotal = courseBreakdownList.reduce((sum, cb) => sum + cb.averageScore, 0);
+
+      const year1Avg = y1Courses.length > 0 ? Number((year1Total / y1Courses.length).toFixed(2)) : null;
+      const year2Avg = y2Courses.length > 0 ? Number((year2Total / y2Courses.length).toFixed(2)) : null;
+      const cumulativeAvg =
+        courseBreakdownList.length > 0 ? Number((avgTotal / courseBreakdownList.length).toFixed(2)) : 0;
+      const overallGrade = computeGrade(cumulativeAvg);
 
       return {
         student,
-        numberOfCourses,
-        totalScore,
-        averageScore,
+        numberOfCourses: courseBreakdownList.length,
+        year1Total,
+        year2Total,
+        totalScore: year2Total > 0 ? year2Total : avgTotal,
+        averageScore: cumulativeAvg,
+        year1Avg,
+        year2Avg,
         overallGrade,
-        courseBreakdown,
+        courseBreakdownList,
       };
     });
 
-    // 5. Sort descending by totalScore/averageScore to calculate Rank
+    // 6. Sort descending by totalScore/averageScore to calculate Class Rank
     studentMetrics.sort((a, b) => b.totalScore - a.totalScore);
 
     const totalStudentsInClass = studentMetrics.length;
@@ -306,28 +354,73 @@ export class CertificatesService {
       (studentMetrics[i] as any).rank = currentRank;
     }
 
-    // 6. Bulk create / replace certificates for this class & year
-    const generatedCertificates = [];
-    const template = dto.templateType || CertificateTemplate.HONOR_EXCELLENCE;
+    // 7. Filter if only Top 3 were requested
+    const targetMetrics =
+      dto.certificateScope === 'TOP_3_ONLY'
+        ? studentMetrics.filter((item) => (item as any).rank <= 3)
+        : studentMetrics;
 
-    for (const item of studentMetrics) {
+    // 8. Bulk create certificates
+    const generatedCertificates = [];
+
+    for (const item of targetMetrics) {
       const rank = (item as any).rank;
+      const isTopThree = rank <= 3;
       const rankText = `${rank}ኛ ደረጃ (ከ ${totalStudentsInClass} ተማሪዎች)`;
       const certCount = await this.prisma.certificateRecord.count();
-      const certNum = `MH-CERT-${year}-${String(certCount + 1).padStart(4, '0')}`;
+      const certNum = `MH-CERT-${year2}-${String(certCount + 1).padStart(4, '0')}`;
+
+      // Default template: HONOR_EXCELLENCE for top 3, STANDARD_COMPLETION for others
+      const template =
+        dto.templateType ||
+        (isTopThree ? CertificateTemplate.HONOR_EXCELLENCE : CertificateTemplate.STANDARD_COMPLETION);
+
+      const titleAmharic =
+        dto.titleAmharic ||
+        (isTopThree
+          ? 'የላቀ ውጤት የክብር ምስክር ወረቀት (Certificate of Honor)'
+          : 'ዓመታዊ የትምህርት ውጤትና ምስክር ወረቀት');
+
+      const titleEnglish =
+        dto.titleEnglish ||
+        (isTopThree ? 'Certificate of Academic Excellence & High Honor' : 'Academic Certificate & Progress Transcript');
+
+      const courseBreakdownData = {
+        year1,
+        year2,
+        courses: item.courseBreakdownList,
+        year1Total: item.year1Total,
+        year2Total: item.year2Total,
+        averageTotal: item.totalScore,
+        year1Average: item.year1Avg,
+        year2Average: item.year2Avg,
+        cumulativeAverage: item.averageScore,
+        rank,
+        totalStudents: totalStudentsInClass,
+        teacherNote:
+          dto.teacherNote?.trim() ||
+          'ተማሪው በመንፈሳዊ ትምህርቱ ላይ ከፍተኛ ትጋትና ፍላጎት የሚያሳይ፣ በመልካም ስነ-ምግባሩ የተመሰገነ ነው።',
+        adminNote:
+          dto.adminNote?.trim() ||
+          'የቀረበውን የትምህርት ውጤትና የስነ-ምግባር ምዘና መሠረት በማድረግ ወደ ሚቀጥለው የትምህርት ደረጃ እንዲዘዋወር ተወስኗል።',
+        conduct: isTopThree ? 'አርአያ (Exemplary)' : 'በጣም ጥሩ (Very Good)',
+        spiritualAttendance: 'ቋሚ (Active)',
+        isTopThree,
+        statusText: item.averageScore >= 50 ? 'ወደ ሚቀጥለው ክፍል ተዛውሯል (Promoted)' : 'ድጋሚ እንዲማር ተወስኗል (Repeat)',
+      };
 
       const cert = await this.prisma.certificateRecord.create({
         data: {
           certificateNumber: certNum,
           studentId: item.student.id,
           templateType: template,
-          titleAmharic: dto.titleAmharic || 'የክብርና የላቀ ውጤት ምስክር ወረቀት',
-          titleEnglish: dto.titleEnglish || 'Certificate of Academic Excellence',
+          titleAmharic,
+          titleEnglish,
           recipientNameAmharic: item.student.fullNameAmharic || item.student.fullName,
           recipientNameEnglish: item.student.fullName,
-          courseOrClass: `${item.student.class.name} (${year} ዓ.ም)`,
-          academicYear: year,
-          issueDateEthiopian: dto.issueDateEthiopian || 'ሰኔ 30 ቀን 2018 ዓ.ም',
+          courseOrClass: `${item.student.class.name} (${year1} - ${year2} ዓ.ም)`,
+          academicYear: year2,
+          issueDateEthiopian: dto.issueDateEthiopian || `ሰኔ 30 ቀን ${year2} ዓ.ም`,
           overallGrade: `${item.overallGrade} (${item.averageScore}%)`,
           rankText,
           numberOfCourses: item.numberOfCourses,
@@ -335,10 +428,10 @@ export class CertificatesService {
           averageScore: item.averageScore,
           rankInClass: rank,
           totalStudentsInClass,
-          courseBreakdown: item.courseBreakdown,
+          courseBreakdown: courseBreakdownData,
           customMessageAmharic:
             dto.customMessageAmharic ||
-            `በደብረ አሚን መርሃ ህይወት ሰንበት ትምህርት ቤት በ${year} ዓ.ም የትምህርት ዘመን በ${item.numberOfCourses} የትምህርት ዓይነቶች አጠቃላይ ድምር ${item.totalScore} ነጥብ በማምጣትና ${item.averageScore}% አማካኝ በማስመዝገብ ከክፍሉ ${rankText} በመያዝ ላጠናቀቀው ተማሪ የተሰጠ።`,
+            `በደብረ አሚን መርሃ ህይወት ሰንበት ትምህርት ቤት በ${year1}-${year2} ዓ.ም የትምህርት ዘመን በ${item.numberOfCourses} የትምህርት ዓይነቶች አጠቃላይ ድምር ${item.totalScore} ነጥብ በማምጣትና ${item.averageScore}% አማካኝ በማስመዝገብ ከክፍሉ ${rankText} በመያዝ ላጠናቀቀው ተማሪ የተሰጠ።`,
           bibleVerseAmharic:
             dto.bibleVerseAmharic ||
             '«በሃይማኖት ጸንታችሁ ቁሙ፣ ጎልምሱ፣ በረቱም፤ ሁሉ በእናንተ በፍቅር ይሁን።» (1ኛ ቆሮ. 16:13)',

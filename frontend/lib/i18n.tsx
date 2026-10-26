@@ -391,6 +391,18 @@ const DICTIONARY: Record<string, Entry> = {
   activeStatus: { en: 'Status', am: 'ሁኔታ' },
   active: { en: 'Active', am: 'ንቁ' },
   inactive: { en: 'Inactive', am: 'የታገደ' },
+
+  // Students Administration
+  studentsManagement: { en: 'Student Registration & Records', am: 'የተማሪዎች መዝገብና ምዝገባ' },
+  registerNewStudent: { en: '+ Register New Student', am: '+ አዲስ ተማሪ መዝግብ' },
+  studentAge: { en: 'Age', am: 'ዕድሜ' },
+  yearsOld: { en: '{n} yrs', am: '{n} ዓመት' },
+  dob: { en: 'Date of Birth', am: 'የትውልድ ቀን' },
+  studentPhone: { en: 'Student Phone', am: 'የተማሪ ስልክ' },
+  parentName: { en: 'Parent / Guardian', am: 'የወላጅ / አሳዳጊ ስም' },
+  academicSummary: { en: 'Academic Performance', am: 'የትምህርት ውጤት' },
+  viewProfileGrades: { en: 'Profile & Grades', am: 'መገለጫና ውጤቶች' },
+  registerGrade: { en: '+ Enter / Record Marks', am: '+ ነጥብ / ውጤት መዝግብ' },
 };
 
 interface LangContextValue {

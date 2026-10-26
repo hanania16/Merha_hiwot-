@@ -29,8 +29,9 @@ const FINANCE_NAV = [
 ];
 
 const ADMIN_NAV = [
-  { href: '/dashboard/admin', key: 'adminReports', icon: LayoutDashboard },
+  { href: '/dashboard/admin/students', key: 'studentsManagement', icon: GraduationCap },
   { href: '/dashboard/users', key: 'userManagement', icon: Users },
+  { href: '/dashboard/admin', key: 'adminReports', icon: LayoutDashboard },
 ];
 
 export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {

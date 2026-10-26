@@ -98,15 +98,34 @@ export class StudentsService {
       include: {
         class: true,
         monthlyPayments: { where: { ethiopianYear: currentEthiopianYear() } },
+        grades: {
+          include: {
+            course: {
+              select: { id: true, code: true, name: true, nameAmharic: true, targetGrade: true, scheduleTime: true },
+            },
+            submittedBy: { select: { id: true, fullName: true } },
+            approvedBy: { select: { id: true, fullName: true } },
+          },
+          orderBy: [{ ethiopianYear: 'desc' }, { semester: 'asc' }],
+        },
+        certificates: {
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
     if (!student) throw new NotFoundException('Student not found');
 
     const paidMonths = student.monthlyPayments.filter((p) => p.status === 'PAID').length;
+    const totalGrades = student.grades?.length || 0;
+    const avgScore =
+      totalGrades > 0
+        ? Math.round(student.grades.reduce((sum, g) => sum + Number(g.totalScore), 0) / totalGrades)
+        : null;
 
     return {
       ...student,
       age: calculateAge(student.dateOfBirth),
+      avgScore,
       feeStatus: {
         status: paidMonths === 13 ? 'PAID' : paidMonths === 0 ? 'UNPAID' : 'PARTIAL',
         unpaidMonths: 13 - paidMonths,
@@ -145,14 +164,38 @@ export class StudentsService {
       this.prisma.student.count({ where }),
       this.prisma.student.findMany({
         where,
-        include: { class: true },
+        include: {
+          class: true,
+          grades: {
+            select: {
+              id: true,
+              totalScore: true,
+              letterGrade: true,
+              status: true,
+              course: { select: { nameAmharic: true, code: true } },
+            },
+          },
+          _count: {
+            select: {
+              grades: true,
+              certificates: true,
+            },
+          },
+        },
         orderBy: { fullName: 'asc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
     ]);
 
-    const results = students.map((s) => ({ ...s, age: calculateAge(s.dateOfBirth) }));
+    const results = students.map((s) => {
+      const totalGrades = s.grades?.length || 0;
+      const avgScore =
+        totalGrades > 0
+          ? Math.round(s.grades.reduce((sum, g) => sum + Number(g.totalScore), 0) / totalGrades)
+          : null;
+      return { ...s, age: calculateAge(s.dateOfBirth), avgScore };
+    });
 
     if (query.feeStatus) {
       const ethiopianYear = currentEthiopianYear();

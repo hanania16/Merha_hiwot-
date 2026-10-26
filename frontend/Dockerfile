@@ -1,7 +1,14 @@
 FROM node:20-slim AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm \
+    npm config set fetch-retries 10 && \
+    npm config set fetch-retry-mintimeout 30000 && \
+    npm config set fetch-retry-maxtimeout 180000 && \
+    npm config set fetch-timeout 300000 && \
+    npm config set audit false && \
+    npm config set fund false && \
+    npm install --network-concurrency=2
 COPY . .
 RUN npm run build
 

@@ -19,6 +19,35 @@ datasource db {
 enum Role {
   ADMINISTRATOR
   FINANCE_OFFICER
+  TEACHER
+}
+
+enum GradeStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+}
+
+enum AcademicSemester {
+  SEMESTER_1
+  SEMESTER_2
+  YEAR_ROUND
+}
+
+enum MessageCategory {
+  GENERAL
+  CURRICULUM
+  EXAM_SCHEDULE
+  STUDENT_AFFAIR
+  MEETING
+  URGENT
+}
+
+enum CertificateTemplate {
+  STANDARD_COMPLETION
+  HONOR_EXCELLENCE
+  DISTINGUISHED_SERVICE
+  PARTICIPATION
 }
 
 enum Gender {
@@ -171,6 +200,11 @@ model User {
   reconciliations        Reconciliation[]      @relation("ReconciliationPerformedBy")
   reconciliationResolved Reconciliation[]      @relation("ReconciliationResolvedBy")
   generatedReports       FinanceReport[]       @relation("ReportGeneratedBy")
+  coursesTeaching        Course[]              @relation("TeacherCourses")
+  submittedGrades        StudentGrade[]        @relation("GradeSubmittedBy")
+  approvedGrades         StudentGrade[]        @relation("GradeApprovedBy")
+  sentMessages           DepartmentMessage[]   @relation("SentMessages")
+  certificatesCreated    CertificateRecord[]   @relation("CertificatesCreated")
 
   @@map("users")
 }
@@ -223,6 +257,8 @@ model Student {
   monthlyPayments   MonthlyPayment[]
   receipts          Receipt[]
   Income            Income[]
+  grades            StudentGrade[]
+  certificates      CertificateRecord[]
 
   @@index([fullName])
   @@index([parentPhone])
@@ -530,4 +566,109 @@ model FinanceReport {
   @@unique([type, ethiopianYear, month])
   @@index([type, ethiopianYear])
   @@map("finance_reports")
+}
+
+// ----------------------------------------------------------------------------
+// TIMHIRT KFL (ትምህርት ክፍል) — EDUCATION & ACADEMICS
+// ----------------------------------------------------------------------------
+
+model Course {
+  id           String           @id @default(uuid())
+  code         String           @unique
+  name         String
+  nameAmharic  String
+  classLevel   ClassLevel
+  targetGrade  String?
+  scheduleTime String?
+  semester     AcademicSemester @default(SEMESTER_1)
+  maxScore     Decimal          @default(100) @db.Decimal(5, 2)
+  passScore    Decimal          @default(50) @db.Decimal(5, 2)
+  description  String?
+  isActive     Boolean          @default(true)
+  teacherId    String?
+  teacher      User?            @relation("TeacherCourses", fields: [teacherId], references: [id])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  grades      StudentGrade[]
+
+  @@map("courses")
+}
+
+model StudentGrade {
+  id              String           @id @default(uuid())
+  studentId       String
+  student         Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId        String
+  course          Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  ethiopianYear   Int              @default(2018)
+  semester        AcademicSemester @default(SEMESTER_1)
+  assessmentScore Decimal?         @default(0) @db.Decimal(5, 2)
+  midExamScore    Decimal?         @default(0) @db.Decimal(5, 2)
+  finalExamScore  Decimal?         @default(0) @db.Decimal(5, 2)
+  conductScore    Decimal?         @default(0) @db.Decimal(5, 2)
+  totalScore      Decimal          @default(0) @db.Decimal(5, 2)
+  letterGrade     String?
+  rank            Int?
+  status          GradeStatus      @default(SUBMITTED)
+  remarks         String?
+  submittedById   String?
+  submittedBy     User?            @relation("GradeSubmittedBy", fields: [submittedById], references: [id])
+  approvedById    String?
+  approvedBy      User?            @relation("GradeApprovedBy", fields: [approvedById], references: [id])
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([studentId, courseId, ethiopianYear, semester])
+  @@index([studentId])
+  @@index([courseId])
+  @@map("student_grades")
+}
+
+model DepartmentMessage {
+  id             String          @id @default(uuid())
+  senderId       String
+  sender         User            @relation("SentMessages", fields: [senderId], references: [id])
+  title          String
+  content        String
+  category       MessageCategory @default(GENERAL)
+  targetAudience String          @default("ALL")
+  isPinned       Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@map("department_messages")
+}
+
+model CertificateRecord {
+  id                   String              @id @default(uuid())
+  certificateNumber    String              @unique
+  studentId            String
+  student              Student             @relation(fields: [studentId], references: [id])
+  templateType         CertificateTemplate @default(HONOR_EXCELLENCE)
+  titleAmharic         String
+  titleEnglish         String
+  recipientNameAmharic String
+  recipientNameEnglish String
+  courseOrClass        String
+  academicYear         Int                 @default(2018)
+  issueDateEthiopian   String
+  customMessageAmharic String?
+  bibleVerseAmharic    String?
+  overallGrade         String?
+  rankText             String?
+  signatory1Title      String              @default("የክፍሉ መምህር")
+  signatory1Name       String              @default("መምህር ተክለ ማርያም")
+  signatory2Title      String              @default("የትምህርት ክፍል ኃላፊ")
+  signatory2Name       String              @default("ዲ/ን ዮሐንስ")
+  signatory3Title      String              @default("የሰ/ት/ቤቱ ሰብሳቢ")
+  signatory3Name       String              @default("መጋቤ ሐዲስ")
+  borderStyle          String              @default("ETHIOPIC_GOLD_DOUBLE")
+  themeColor           String              @default("#D4AF37")
+  createdById          String?
+  createdBy            User?               @relation("CertificatesCreated", fields: [createdById], references: [id])
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@map("certificate_records")
 }

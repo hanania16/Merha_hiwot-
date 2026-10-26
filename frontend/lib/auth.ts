@@ -6,7 +6,7 @@ export interface AuthUser {
   id: string;
   fullName: string;
   email: string;
-  role: 'ADMINISTRATOR' | 'FINANCE_OFFICER';
+  role: 'ADMINISTRATOR' | 'FINANCE_OFFICER' | 'TEACHER';
 }
 
 export async function login(email: string, password: string) {
@@ -34,3 +34,12 @@ export function getCurrentUser(): AuthUser | null {
 export function canAccessFinance(user: AuthUser | null) {
   return user?.role === 'ADMINISTRATOR' || user?.role === 'FINANCE_OFFICER';
 }
+
+export function canAccessEducation(user: AuthUser | null) {
+  return user?.role === 'ADMINISTRATOR' || user?.role === 'TEACHER';
+}
+
+export function canAccessAdmin(user: AuthUser | null) {
+  return user?.role === 'ADMINISTRATOR';
+}
+

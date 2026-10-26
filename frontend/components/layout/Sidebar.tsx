@@ -5,10 +5,18 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Wallet, TrendingDown, FileBarChart, PieChart, Receipt,
-  LogOut, X,
+  LogOut, X, GraduationCap, Award, Scroll, MessageSquare, BookOpen, Users,
 } from 'lucide-react';
 import { logout, getCurrentUser } from '@/lib/auth';
 import { useLang } from '@/lib/i18n';
+
+const EDUCATION_NAV = [
+  { href: '/dashboard/education', key: 'dashboard', icon: GraduationCap },
+  { href: '/dashboard/education/grades', key: 'grades', icon: Award },
+  { href: '/dashboard/education/certificates', key: 'certificates', icon: Scroll },
+  { href: '/dashboard/education/communication', key: 'communication', icon: MessageSquare },
+  { href: '/dashboard/education/courses', key: 'courses', icon: BookOpen },
+];
 
 const FINANCE_NAV = [
   { href: '/dashboard/finance', key: 'dashboard', icon: LayoutDashboard },
@@ -22,6 +30,7 @@ const FINANCE_NAV = [
 
 const ADMIN_NAV = [
   { href: '/dashboard/admin', key: 'adminReports', icon: LayoutDashboard },
+  { href: '/dashboard/users', key: 'userManagement', icon: Users },
 ];
 
 export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -29,8 +38,8 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
   const user = getCurrentUser();
   const { t } = useLang();
 
-  const showFinance = user?.role === 'FINANCE_OFFICER';
-
+  const showEducation = user?.role === 'ADMINISTRATOR' || user?.role === 'TEACHER';
+  const showFinance = user?.role === 'ADMINISTRATOR' || user?.role === 'FINANCE_OFFICER';
   const showAdmin = user?.role === 'ADMINISTRATOR';
 
   function renderGroup(label: string, items: typeof FINANCE_NAV) {
@@ -73,6 +82,7 @@ export function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
       </div>
 
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
+        {showEducation && renderGroup(t('education'), EDUCATION_NAV)}
         {showFinance && renderGroup(t('finance'), FINANCE_NAV)}
         {showAdmin && renderGroup(t('adminReports'), ADMIN_NAV)}
       </nav>

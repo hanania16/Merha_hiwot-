@@ -11,6 +11,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { StudentsModule } from './students/students.module';
 import { FinanceModule } from './finance/finance.module';
+import { EducationModule } from './education/education.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -26,6 +27,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     UsersModule,
     StudentsModule,
     FinanceModule,
+    EducationModule,
     DigestModule,
   ],
   providers: [

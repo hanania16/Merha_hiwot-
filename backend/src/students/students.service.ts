@@ -253,7 +253,7 @@ export class StudentsService {
     return this.prisma.classGroup.findMany({
       where: includeInactive ? {} : { isActive: true },
       include: {
-        teachers: true,
+        teachers: { select: { id: true, fullName: true, phone: true, email: true, role: true } },
         _count: { select: { students: true } },
       },
       orderBy: [{ orderIndex: 'asc' }, { name: 'asc' }],
@@ -264,7 +264,7 @@ export class StudentsService {
     const classGroup = await this.prisma.classGroup.findUnique({
       where: { id },
       include: {
-        teachers: true,
+        teachers: { select: { id: true, fullName: true, phone: true, email: true, role: true } },
         _count: { select: { students: true } },
       },
     });
@@ -283,7 +283,7 @@ export class StudentsService {
             : undefined,
       },
       include: {
-        teachers: true,
+        teachers: { select: { id: true, fullName: true, phone: true, email: true, role: true } },
         _count: { select: { students: true } },
       },
     });
@@ -313,7 +313,7 @@ export class StudentsService {
           : undefined,
       },
       include: {
-        teachers: true,
+        teachers: { select: { id: true, fullName: true, phone: true, email: true, role: true } },
         _count: { select: { students: true } },
       },
     });

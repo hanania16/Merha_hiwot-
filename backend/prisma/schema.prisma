@@ -225,6 +225,7 @@ model User {
   sentMessages           DepartmentMessage[]   @relation("SentMessages")
   certificatesCreated    CertificateRecord[]   @relation("CertificatesCreated")
   behaviorRecordsReported StudentBehaviorRecord[] @relation("BehaviorReportedBy")
+  classesTeaching        ClassGroup[]          @relation("ClassGroupTeachers")
 
   @@map("users")
 }
@@ -244,17 +245,16 @@ model ClassGroup {
   orderIndex  Int        @default(0)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @default(now()) @updatedAt
-  teachers    Teacher[]
+  teachers    User[]     @relation("ClassGroupTeachers")
   students    Student[]
 
   @@map("class_groups")
 }
 
 model Teacher {
-  id       String       @id @default(uuid())
+  id       String  @id @default(uuid())
   fullName String
   phone    String?
-  classes  ClassGroup[]
 
   @@map("teachers")
 }

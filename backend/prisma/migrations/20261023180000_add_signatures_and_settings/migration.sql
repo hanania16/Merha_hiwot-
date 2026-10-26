@@ -39,5 +39,5 @@ CREATE TABLE IF NOT EXISTS "system_settings" (
 
 -- Seed default system setting row
 INSERT INTO "system_settings" ("id", "systemNameAmharic", "systemNameEnglish", "churchNameAmharic", "churchNameEnglish", "mottoAmharic", "primaryColorHex", "accentColorHex", "currentAcademicYear", "defaultPassingScore", "teachingAdminName", "churchAdminName", "updatedAt")
-VALUES ('default', 'መርሃ ህይወት ሰንበት ትምህርት ቤት', 'Merha Hiwot Sunday School', 'ደብረ አሚን ተክለ ሃይማኖት ቤተ ክርስቲያን', 'Debre Amin Teklehaimanot Church', 'ሕፃናትን ወደ እኔ ይመጡ ዘንድ ተዉአቸው፤ አትከልክሏቸውም፤ የእግዚአብሔር መንግሥት እንደ እነዚህ ላሉት ናትና።', '#1E3A8A', '#D4AF37', 2018, 50.00, 'ዲ/ን ዮሐንስ', 'መጋቤ ሐዲስ', CURRENT_TIMESTAMP)
+VALUES ('default', 'መርሐ ህይወት ሰንበት ትምህርት ቤት', 'Merha Hiwot Sunday School', 'የመርሶ ሕይወት መድኃኔዓለም ቤተ ክርስቲያን', 'Debre Amin Teklehaimanot Church', 'ሕፃናትን ወደ እኔ ይመጡ ዘንድ ተዉአቸው፤ አትከልክሏቸውም፤ የእግዚአብሔር መንግሥት እንደ እነዚህ ላሉት ናትና።', '#1E3A8A', '#D4AF37', 2018, 50.00, 'ዲ/ን ዮሐንስ', 'መጋቤ ሐዲስ', CURRENT_TIMESTAMP)
 ON CONFLICT ("id") DO NOTHING;

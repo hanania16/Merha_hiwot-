@@ -12,6 +12,7 @@ import {
   Palette,
   BookOpen,
   Users,
+  GraduationCap,
   Save,
   Plus,
   Trash2,
@@ -25,6 +26,19 @@ import {
   ChevronRight,
   ExternalLink,
 } from 'lucide-react';
+
+interface ClassItem {
+  id: string;
+  name: string;
+  level: 'CLASS_1_3' | 'CLASS_4_6' | 'CLASS_7_12';
+  description?: string | null;
+  roomNumber?: string | null;
+  academicYear: number;
+  isActive: boolean;
+  orderIndex: number;
+  teachers?: TeacherOption[];
+  _count?: { students: number };
+}
 
 interface SystemSettingsData {
   id: string;
@@ -79,7 +93,7 @@ export default function SettingsPage() {
   const { lang, t } = useLang();
   const currentUser = getCurrentUser();
 
-  const [activeTab, setActiveTab] = useState<'branding' | 'courses' | 'staff'>('branding');
+  const [activeTab, setActiveTab] = useState<'branding' | 'classes' | 'courses' | 'staff'>('branding');
   const [loading, setLoading] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -87,7 +101,7 @@ export default function SettingsPage() {
   // System Settings State
   const [settings, setSettings] = useState<SystemSettingsData>({
     id: 'default',
-    systemNameAmharic: 'መርሃ ህይወት ሰንበት ትምህርት ቤት',
+    systemNameAmharic: 'መርሐ ህይወት ሰንበት ትምህርት ቤት',
     systemNameEnglish: 'Merha Hiwot Sunday School',
     churchNameAmharic: 'ደብረ አሚን ተክለ ሃይማኖት ቤተ ክርስቲያን',
     churchNameEnglish: 'Debre Amin Teklehaimanot Church',
@@ -100,6 +114,19 @@ export default function SettingsPage() {
     teachingAdminName: 'ዲ/ን ዮሐንስ',
     churchAdminName: 'መጋቤ ሐዲስ',
   });
+
+  // Classes CRUD State
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [classModalOpen, setClassModalOpen] = useState(false);
+  const [editingClass, setEditingClass] = useState<ClassItem | null>(null);
+  const [className, setClassName] = useState('');
+  const [classLevel, setClassLevel] = useState<'CLASS_1_3' | 'CLASS_4_6' | 'CLASS_7_12'>('CLASS_1_3');
+  const [classRoomNumber, setClassRoomNumber] = useState('');
+  const [classDescription, setClassDescription] = useState('');
+  const [classAcademicYear, setClassAcademicYear] = useState(2018);
+  const [classTeacherIds, setClassTeacherIds] = useState<string[]>([]);
+  const [savingClass, setSavingClass] = useState(false);
+  const [classError, setClassError] = useState('');
 
   // Courses CRUD State
   const [courses, setCourses] = useState<CourseItem[]>([]);
@@ -131,14 +158,16 @@ export default function SettingsPage() {
   async function loadAllData() {
     try {
       setLoading(true);
-      const [settingsRes, coursesRes, teachersRes] = await Promise.all([
+      const [settingsRes, coursesRes, teachersRes, classesRes] = await Promise.all([
         api.get<SystemSettingsData>('/settings'),
         api.get<CourseItem[]>('/education/courses'),
         api.get<TeacherOption[]>('/users'),
+        api.get<ClassItem[]>('/students/classes?includeInactive=true'),
       ]);
       if (settingsRes) setSettings(settingsRes);
       if (coursesRes) setCourses(coursesRes);
       if (teachersRes) setTeachers(teachersRes);
+      if (classesRes) setClasses(classesRes);
     } catch (err) {
       console.error('Failed to load settings data:', err);
     } finally {
@@ -239,6 +268,83 @@ export default function SettingsPage() {
     }
   }
 
+  function handleOpenCreateClass() {
+    setEditingClass(null);
+    setClassName('');
+    setClassLevel('CLASS_1_3');
+    setClassRoomNumber('');
+    setClassDescription('');
+    setClassAcademicYear(settings.currentAcademicYear || 2018);
+    setClassTeacherIds([]);
+    setClassError('');
+    setClassModalOpen(true);
+  }
+
+  function handleOpenEditClass(c: ClassItem) {
+    setEditingClass(c);
+    setClassName(c.name);
+    setClassLevel(c.level);
+    setClassRoomNumber(c.roomNumber || '');
+    setClassDescription(c.description || '');
+    setClassAcademicYear(c.academicYear || 2018);
+    setClassTeacherIds(c.teachers ? c.teachers.map((t) => t.id) : []);
+    setClassError('');
+    setClassModalOpen(true);
+  }
+
+  async function handleSaveClass(e: React.FormEvent) {
+    e.preventDefault();
+    if (!className.trim()) return;
+    setSavingClass(true);
+    setClassError('');
+    try {
+      const payload = {
+        name: className.trim(),
+        level: classLevel,
+        roomNumber: classRoomNumber.trim() || undefined,
+        description: classDescription.trim() || undefined,
+        academicYear: Number(classAcademicYear) || 2018,
+        teacherIds: classTeacherIds,
+      };
+
+      if (editingClass) {
+        await api.patch(`/students/classes/${editingClass.id}`, payload);
+        setSuccessMsg(lang === 'am' ? 'ክፍሉ በተሳካ ሁኔታ ተሻሽሏል' : 'Class updated successfully');
+      } else {
+        await api.post('/students/classes', payload);
+        setSuccessMsg(lang === 'am' ? 'አዲስ ክፍል በተሳካ ሁኔታ ተፈጥሯል' : 'Class created successfully');
+      }
+      setClassModalOpen(false);
+      await loadAllData();
+    } catch (err: any) {
+      console.error('Failed to save class:', err);
+      setClassError(err?.message || (lang === 'am' ? 'ክፍል ማስቀመጥ አልተቻለም' : 'Failed to save class'));
+    } finally {
+      setSavingClass(false);
+    }
+  }
+
+  async function handleDeleteClass(c: ClassItem) {
+    if (!confirm(lang === 'am' ? `ክፍል "${c.name}"ን ማጥፋት ይፈልጋሉ?` : `Are you sure you want to delete class "${c.name}"?`)) return;
+    try {
+      await api.delete(`/students/classes/${c.id}`);
+      setSuccessMsg(lang === 'am' ? 'ክፍሉ ተሰርዟል' : 'Class deleted successfully');
+      await loadAllData();
+    } catch (err: any) {
+      console.error('Failed to delete class:', err);
+      alert(err?.message || (lang === 'am' ? 'ክፍሉን ማጥፋት አልተቻለም' : 'Failed to delete class'));
+    }
+  }
+
+  async function handleToggleClassActive(c: ClassItem) {
+    try {
+      await api.patch(`/students/classes/${c.id}`, { isActive: !c.isActive });
+      await loadAllData();
+    } catch (err) {
+      console.error('Failed to toggle class status:', err);
+    }
+  }
+
   const filteredCourses = courses.filter((c) => {
     if (courseClassFilter !== 'ALL' && c.classLevel !== courseClassFilter) return false;
     return true;
@@ -266,10 +372,10 @@ export default function SettingsPage() {
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex border-b border-gray-200 gap-2">
+      <div className="flex border-b border-gray-200 gap-2 overflow-x-auto">
         <button
           onClick={() => setActiveTab('branding')}
-          className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 flex items-center gap-2 ${
+          className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
             activeTab === 'branding'
               ? 'border-gold text-ink'
               : 'border-transparent text-slate hover:text-ink'
@@ -280,15 +386,30 @@ export default function SettingsPage() {
         </button>
 
         <button
+          onClick={() => setActiveTab('classes')}
+          className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+            activeTab === 'classes'
+              ? 'border-gold text-ink'
+              : 'border-transparent text-slate hover:text-ink'
+          }`}
+        >
+          <GraduationCap size={15} className={activeTab === 'classes' ? 'text-gold' : ''} />
+          {lang === 'am' ? '2. ክፍሎችና ምድቦች (Classes CRUD)' : '2. Classes & Sections'}
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-gold/20 text-gold font-bold">
+            {classes.length}
+          </span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('courses')}
-          className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 flex items-center gap-2 ${
+          className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
             activeTab === 'courses'
               ? 'border-gold text-ink'
               : 'border-transparent text-slate hover:text-ink'
           }`}
         >
           <BookOpen size={15} className={activeTab === 'courses' ? 'text-gold' : ''} />
-          {lang === 'am' ? '2. የትምህርት ዓይነቶች (Courses CRUD)' : '2. Courses Management'}
+          {lang === 'am' ? '3. የትምህርት ዓይነቶች (Courses CRUD)' : '3. Courses Management'}
           <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-gold/20 text-gold font-bold">
             {courses.length}
           </span>
@@ -296,14 +417,14 @@ export default function SettingsPage() {
 
         <button
           onClick={() => setActiveTab('staff')}
-          className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 flex items-center gap-2 ${
+          className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
             activeTab === 'staff'
               ? 'border-gold text-ink'
               : 'border-transparent text-slate hover:text-ink'
           }`}
         >
           <Users size={15} className={activeTab === 'staff' ? 'text-gold' : ''} />
-          {lang === 'am' ? '3. መምህራንና ይፋዊ ፊርማዎች' : '3. Teachers & Signatures'}
+          {lang === 'am' ? '4. መምህራንና ይፋዊ ፊርማዎች' : '4. Teachers & Signatures'}
           <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-gray-100 text-slate font-bold">
             {teachers.length}
           </span>
@@ -573,6 +694,151 @@ export default function SettingsPage() {
             </div>
           </div>
         </form>
+      ) : activeTab === 'classes' ? (
+        /* TAB 2: CLASSES CRUD */
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+            <div>
+              <h3 className="font-bold text-sm text-ink flex items-center gap-2">
+                <GraduationCap className="text-gold" size={18} />
+                <span>{lang === 'am' ? 'የሰንበት ት/ቤት ክፍሎችና ምድቦች' : 'Sunday School Classes & Divisions'}</span>
+              </h3>
+              <p className="text-xs text-slate mt-0.5">
+                {lang === 'am'
+                  ? 'አዳዲስ ክፍሎችን መመዝገብ፣ የመማሪያ ክፍሎችን (Rooms) ማዘጋጀትና መምህራንን መመደብ'
+                  : 'Add new class groups, manage room numbers, and assign homeroom teachers'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/dashboard/education/classes"
+                className="btn-outline text-xs font-semibold py-1.5 px-3 flex items-center gap-1.5"
+              >
+                <Users size={14} className="text-gold" />
+                <span>{lang === 'am' ? 'የክፍል ተማሪዎች መዝገብ እይ' : 'View Class Rosters'}</span>
+              </Link>
+              <button
+                onClick={handleOpenCreateClass}
+                className="btn-gold text-xs font-semibold py-1.5 px-3 flex items-center gap-1.5"
+              >
+                <Plus size={14} />
+                <span>{lang === 'am' ? 'አዲስ ክፍል መዝግብ' : 'Add New Class'}</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="table w-full text-xs">
+                <thead>
+                  <tr className="bg-ink text-white">
+                    <th>{lang === 'am' ? 'የክፍል ስም' : 'Class Name'}</th>
+                    <th>{lang === 'am' ? 'ደረጃ (Curriculum Level)' : 'Curriculum Level'}</th>
+                    <th>{lang === 'am' ? 'የመማሪያ ክፍል (Room)' : 'Room #'}</th>
+                    <th>{lang === 'am' ? 'የትምህርት ዘመን' : 'Academic Year'}</th>
+                    <th className="text-center">{lang === 'am' ? 'የተመዘገቡ ተማሪዎች' : 'Enrolled Students'}</th>
+                    <th>{lang === 'am' ? 'የተመደቡ መምህራን' : 'Assigned Teachers'}</th>
+                    <th className="text-center">{lang === 'am' ? 'ሁኔታ' : 'Status'}</th>
+                    <th className="text-right">{lang === 'am' ? 'ድርጊቶች' : 'Actions'}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {classes.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-xs text-slate">
+                        {lang === 'am' ? 'ምንም የተመዘገበ ክፍል የለም' : 'No classes configured yet'}
+                      </td>
+                    </tr>
+                  ) : (
+                    classes.map((cls) => (
+                      <tr key={cls.id} className="hover:bg-amber-50/20">
+                        <td>
+                          <p className="font-bold text-xs text-ink">{cls.name}</p>
+                          {cls.description && (
+                            <p className="text-[10px] text-slate line-clamp-1">{cls.description}</p>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            cls.level === 'CLASS_1_3'
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              : cls.level === 'CLASS_4_6'
+                              ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                              : 'bg-purple-50 text-purple-800 border border-purple-200'
+                          }`}>
+                            {cls.level === 'CLASS_1_3'
+                              ? 'ክፍል 1-3'
+                              : cls.level === 'CLASS_4_6'
+                              ? 'ክፍል 4-6'
+                              : 'ክፍል 7-12'}
+                          </span>
+                        </td>
+                        <td className="font-mono text-slate">
+                          {cls.roomNumber ? (
+                            <span className="px-2 py-0.5 rounded bg-gray-100 text-ink font-semibold">
+                              {cls.roomNumber}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="font-mono text-slate">{cls.academicYear} ዓ.ም</td>
+                        <td className="text-center">
+                          <Link
+                            href="/dashboard/education/classes"
+                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gold/15 text-ink font-bold text-[11px] hover:bg-gold/30 transition-all"
+                          >
+                            <Users size={12} className="text-gold" />
+                            <span>{cls._count?.students ?? 0} ተማሪዎች</span>
+                          </Link>
+                        </td>
+                        <td>
+                          {cls.teachers && cls.teachers.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {cls.teachers.map((t) => (
+                                <span key={t.id} className="px-2 py-0.5 rounded text-[10px] bg-mist/60 text-ink font-medium">
+                                  {t.fullName}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-slate/60 text-[11px]">—</span>
+                          )}
+                        </td>
+                        <td className="text-center">
+                          <button
+                            onClick={() => handleToggleClassActive(cls)}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              cls.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-slate'
+                            }`}
+                          >
+                            {cls.isActive ? (lang === 'am' ? 'ንቁ' : 'Active') : (lang === 'am' ? 'ቦዝኗል' : 'Inactive')}
+                          </button>
+                        </td>
+                        <td className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handleOpenEditClass(cls)}
+                              className="p-1.5 hover:bg-gold/20 text-ink rounded transition-all"
+                              title={lang === 'am' ? 'አስተካክል' : 'Edit'}
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteClass(cls)}
+                              className="p-1.5 hover:bg-red-50 text-red-600 rounded transition-all"
+                              title={lang === 'am' ? 'አጥፋ' : 'Delete'}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       ) : activeTab === 'courses' ? (
         /* TAB 2: COURSES CRUD */
         <div className="space-y-4">
@@ -939,6 +1205,130 @@ export default function SettingsPage() {
               className="btn-gold text-xs font-semibold"
             >
               {savingCourse ? t('saving') : t('save')}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Class Create / Edit Modal */}
+      <Modal
+        open={classModalOpen}
+        title={
+          editingClass
+            ? `${lang === 'am' ? 'ክፍል አስተካክል' : 'Edit Class'}: ${editingClass.name}`
+            : lang === 'am' ? 'አዲስ ክፍል መዝግብ' : 'Add New Class'
+        }
+        onClose={() => setClassModalOpen(false)}
+      >
+        <form onSubmit={handleSaveClass} className="space-y-4">
+          {classError && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs font-semibold">
+              {classError}
+            </div>
+          )}
+
+          <div>
+            <label className="label">{lang === 'am' ? 'የክፍል ስም (Class Name)' : 'Class Name'} *</label>
+            <input
+              type="text"
+              required
+              className="input text-xs w-full font-bold"
+              placeholder="ለምሳሌ፡ መዋዕለ ሕፃናት - ክፍል ሀ / ክፍል 1-3 ሀ"
+              value={className}
+              onChange={(e) => setClassName(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">{lang === 'am' ? 'የትምህርት ደረጃ (Curriculum Level)' : 'Curriculum Level'} *</label>
+              <select
+                className="select text-xs w-full font-semibold"
+                value={classLevel}
+                onChange={(e) => setClassLevel(e.target.value as any)}
+              >
+                <option value="CLASS_1_3">{lang === 'am' ? 'ክፍል 1-3 (ሕፃናት)' : 'Level 1-3 (Children)'}</option>
+                <option value="CLASS_4_6">{lang === 'am' ? 'ክፍል 4-6 (ማዕከላውያን)' : 'Level 4-6 (Middle)'}</option>
+                <option value="CLASS_7_12">{lang === 'am' ? 'ክፍል 7-12 (ወጣቶች)' : 'Level 7-12 (Youth)'}</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="label">{lang === 'am' ? 'የመማሪያ ክፍል ቁጥር / ስም (Room)' : 'Room Number / Name'}</label>
+              <input
+                type="text"
+                className="input text-xs w-full"
+                placeholder="ለምሳሌ፡ ክፍል 101 / አዳራሽ ሀ"
+                value={classRoomNumber}
+                onChange={(e) => setClassRoomNumber(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">{lang === 'am' ? 'የትምህርት ዘመን (Academic Year)' : 'Academic Year'}</label>
+              <input
+                type="number"
+                className="input text-xs w-full font-mono font-bold"
+                value={classAcademicYear}
+                onChange={(e) => setClassAcademicYear(Number(e.target.value))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="label">{lang === 'am' ? 'መግለጫ / ተጨማሪ ማብራሪያ' : 'Description / Notes'}</label>
+            <textarea
+              rows={2}
+              className="input text-xs w-full py-2"
+              placeholder="የክፍሉ አጭር መግለጫ…"
+              value={classDescription}
+              onChange={(e) => setClassDescription(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="label">{lang === 'am' ? 'የክፍል ተጠሪ መምህራን መድብ (Assign Teachers)' : 'Assign Teachers'}</label>
+            <div className="max-h-36 overflow-y-auto border border-gray-200 rounded-lg p-2 divide-y divide-gray-100">
+              {teachers.map((t) => {
+                const checked = classTeacherIds.includes(t.id);
+                return (
+                  <label key={t.id} className="flex items-center gap-2 py-1.5 px-2 hover:bg-gold/10 rounded cursor-pointer text-xs">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setClassTeacherIds([...classTeacherIds, t.id]);
+                        } else {
+                          setClassTeacherIds(classTeacherIds.filter((id) => id !== t.id));
+                        }
+                      }}
+                      className="rounded text-gold focus:ring-gold"
+                    />
+                    <span className="font-semibold text-ink">{t.fullName}</span>
+                    <span className="text-[10px] text-slate font-mono">({t.role})</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => setClassModalOpen(false)}
+              className="btn-outline text-xs"
+            >
+              {t('cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={savingClass || !className.trim()}
+              className="btn-gold text-xs font-semibold"
+            >
+              {savingClass ? t('saving') : t('save')}
             </button>
           </div>
         </form>

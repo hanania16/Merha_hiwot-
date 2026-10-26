@@ -126,23 +126,32 @@ async function main() {
   console.log('✓ All 7 teachers and administrative user accounts created.');
 
   // 2. Class Groups
-  const class1_3 = await prisma.classGroup.upsert({
+  let class1_3 = await prisma.classGroup.findFirst({
     where: { level: ClassLevel.CLASS_1_3 },
-    update: { name: 'ክፍል 1-3 (ሕፃናት)' },
-    create: { level: ClassLevel.CLASS_1_3, name: 'ክፍል 1-3 (ሕፃናት)' },
   });
+  if (!class1_3) {
+    class1_3 = await prisma.classGroup.create({
+      data: { level: ClassLevel.CLASS_1_3, name: 'ክፍል 1-3 (ሕፃናት)' },
+    });
+  }
 
-  const class4_6 = await prisma.classGroup.upsert({
+  let class4_6 = await prisma.classGroup.findFirst({
     where: { level: ClassLevel.CLASS_4_6 },
-    update: { name: 'ማዕከላውያን (4ኛ እና 5ኛ ክፍል)' },
-    create: { level: ClassLevel.CLASS_4_6, name: 'ማዕከላውያን (4ኛ እና 5ኛ ክፍል)' },
   });
+  if (!class4_6) {
+    class4_6 = await prisma.classGroup.create({
+      data: { level: ClassLevel.CLASS_4_6, name: 'ማዕከላውያን (4ኛ እና 5ኛ ክፍል)' },
+    });
+  }
 
-  const class7_12 = await prisma.classGroup.upsert({
+  let class7_12 = await prisma.classGroup.findFirst({
     where: { level: ClassLevel.CLASS_7_12 },
-    update: { name: 'ወጣቶች (7ኛ ክፍል)' },
-    create: { level: ClassLevel.CLASS_7_12, name: 'ወጣቶች (7ኛ ክፍል)' },
   });
+  if (!class7_12) {
+    class7_12 = await prisma.classGroup.create({
+      data: { level: ClassLevel.CLASS_7_12, name: 'ወጣቶች (7ኛ ክፍል)' },
+    });
+  }
 
   // 3. Courses - Official Schedule from User Document
   const officialCourses = [

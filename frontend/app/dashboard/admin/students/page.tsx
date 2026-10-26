@@ -31,6 +31,9 @@ import {
   HeartHandshake,
   FileText,
   Clock,
+  Upload,
+  Download,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 interface ClassGroup {
@@ -195,6 +198,25 @@ export default function AdminStudentsPage() {
   const [conductScore, setConductScore] = useState(5);
   const [gradeRemarks, setGradeRemarks] = useState('');
   const [savingGrade, setSavingGrade] = useState(false);
+
+  // Bulk Registration State
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkTargetClassId, setBulkTargetClassId] = useState('');
+  const [bulkMode, setBulkMode] = useState<'table' | 'csv'>('table');
+  const [bulkRows, setBulkRows] = useState<Array<{
+    fullNameAmharic: string;
+    fullName: string;
+    gender: 'MALE' | 'FEMALE';
+    dateOfBirth: string;
+    parentName: string;
+    parentPhone: string;
+  }>>([
+    { fullNameAmharic: '', fullName: '', gender: 'MALE', dateOfBirth: '2016-01-01', parentName: '', parentPhone: '09' },
+    { fullNameAmharic: '', fullName: '', gender: 'FEMALE', dateOfBirth: '2016-01-01', parentName: '', parentPhone: '09' },
+    { fullNameAmharic: '', fullName: '', gender: 'MALE', dateOfBirth: '2016-01-01', parentName: '', parentPhone: '09' },
+  ]);
+  const [submittingBulk, setSubmittingBulk] = useState(false);
+  const [bulkError, setBulkError] = useState('');
 
   // Calculated Age for DOB input preview
   const calculatedAgePreview = useMemo(() => {
@@ -443,6 +465,111 @@ export default function AdminStudentsPage() {
     }
   }
 
+  function handleAddBulkRow() {
+    setBulkRows([
+      ...bulkRows,
+      { fullNameAmharic: '', fullName: '', gender: 'MALE', dateOfBirth: '2016-01-01', parentName: '', parentPhone: '09' },
+    ]);
+  }
+
+  function handleRemoveBulkRow(idx: number) {
+    if (bulkRows.length <= 1) return;
+    setBulkRows(bulkRows.filter((_, i) => i !== idx));
+  }
+
+  function handleUpdateBulkRow(idx: number, field: string, value: string) {
+    const updated = [...bulkRows];
+    updated[idx] = { ...updated[idx], [field]: value };
+    setBulkRows(updated);
+  }
+
+  function handleDownloadSampleCsv() {
+    const sample = `Amharic Name,English Name,Gender,Birth Date,Parent Name,Parent Phone\n"ዮሐንስ ተስፋዬ","Yohannes Tesfaye",MALE,2015-05-12,"ተስፋዬ ገብሬ","0911223344"\n"ሳራ በቀለ","Sara Bekele",FEMALE,2016-08-20,"በቀለ ደሳለኝ","0922334455"`;
+    const blob = new Blob([sample], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'MH_Students_Sample_Template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  function handleCsvFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+      parseAndSetCsv(text);
+    };
+    reader.readAsText(file);
+  }
+
+  function parseAndSetCsv(text: string) {
+    const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+    if (lines.length < 2) return;
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      const parts = line.split(',').map((p) => p.trim().replace(/^["']|["']$/g, ''));
+      if (parts.length >= 6) {
+        rows.push({
+          fullNameAmharic: parts[0] || '',
+          fullName: parts[1] || parts[0] || '',
+          gender: (parts[2].toUpperCase() === 'FEMALE' || parts[2] === 'ሴት' ? 'FEMALE' : 'MALE') as 'MALE' | 'FEMALE',
+          dateOfBirth: parts[3] || '2016-01-01',
+          parentName: parts[4] || '',
+          parentPhone: parts[5] || '09',
+        });
+      }
+    }
+    if (rows.length > 0) {
+      setBulkRows(rows);
+      setBulkMode('table');
+    }
+  }
+
+  async function handleSaveBulk(e: React.FormEvent) {
+    e.preventDefault();
+    const classIdToUse = bulkTargetClassId || classes[0]?.id;
+    if (!classIdToUse) {
+      setBulkError(lang === 'am' ? 'እባክዎ መጀመሪያ ክፍል ይምረጡ' : 'Please select a class');
+      return;
+    }
+
+    const validRows = bulkRows.filter((r) => (r.fullNameAmharic.trim() || r.fullName.trim()) && r.parentName.trim());
+    if (validRows.length === 0) {
+      setBulkError(lang === 'am' ? 'እባክዎ ቢያንስ የአንድ ተማሪ ሙሉ መረጃ ያስገቡ' : 'Please provide at least one valid student record');
+      return;
+    }
+
+    setSubmittingBulk(true);
+    setBulkError('');
+    try {
+      const studentsPayload = validRows.map((r) => ({
+        fullName: (r.fullName.trim() || r.fullNameAmharic.trim()),
+        fullNameAmharic: r.fullNameAmharic.trim() || undefined,
+        gender: r.gender,
+        dateOfBirth: new Date(r.dateOfBirth).toISOString(),
+        classId: classIdToUse,
+        parentName: r.parentName.trim(),
+        parentPhone: r.parentPhone.trim(),
+        isWorkingMember: false,
+      }));
+
+      await api.post('/students/bulk', { students: studentsPayload });
+      setBulkModalOpen(false);
+      await loadData();
+    } catch (err: any) {
+      console.error('Failed to bulk register students:', err);
+      setBulkError(err?.message || (lang === 'am' ? 'ተማሪዎችን በቡድን መመዝገብ አልተቻለም' : 'Failed to bulk register students'));
+    } finally {
+      setSubmittingBulk(false);
+    }
+  }
+
   const filteredStudents = students.filter((s) => {
     if (selectedClassId !== 'ALL' && s.classId !== selectedClassId) return false;
     if (statusFilter !== 'ALL' && s.status !== statusFilter) return false;
@@ -483,13 +610,29 @@ export default function AdminStudentsPage() {
             : 'Register students, track grades, monitor age, and manage student files'
         }
       >
-        <button
-          onClick={handleOpenCreate}
-          className="btn-gold flex items-center gap-1.5 text-xs font-semibold"
-        >
-          <UserPlus size={15} />
-          {t('registerNewStudent')}
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/dashboard/education/classes"
+            className="btn-outline flex items-center gap-1.5 text-xs font-semibold py-1.5 px-3 bg-white"
+          >
+            <Users size={14} className="text-gold" />
+            <span>{lang === 'am' ? 'የክፍል መዝገብ (Roster)' : 'Class Roster'}</span>
+          </Link>
+          <button
+            onClick={() => setBulkModalOpen(true)}
+            className="btn-outline flex items-center gap-1.5 text-xs font-semibold py-1.5 px-3 bg-white"
+          >
+            <Upload size={14} className="text-gold" />
+            <span>{lang === 'am' ? 'በቡድን መዝግብ (Bulk / CSV)' : 'Bulk Register (CSV)'}</span>
+          </button>
+          <button
+            onClick={handleOpenCreate}
+            className="btn-gold flex items-center gap-1.5 text-xs font-semibold"
+          >
+            <UserPlus size={15} />
+            {t('registerNewStudent')}
+          </button>
+        </div>
       </Topbar>
 
       {/* Top Stat Cards */}
@@ -1586,6 +1729,231 @@ export default function AdminStudentsPage() {
               className="btn-gold text-xs font-bold"
             >
               {savingBehavior ? t('saving') : lang === 'am' ? 'መዝገብ አስቀምጥ' : 'Save Record'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Bulk / CSV Registration Modal */}
+      <Modal
+        open={bulkModalOpen}
+        title={lang === 'am' ? 'ተማሪዎችን በቡድን መዝግብ (Bulk / CSV Registration)' : 'Bulk Student Registration'}
+        onClose={() => setBulkModalOpen(false)}
+      >
+        <form onSubmit={handleSaveBulk} className="space-y-4">
+          {bulkError && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs font-semibold">
+              {bulkError}
+            </div>
+          )}
+
+          {/* Class target selector */}
+          <div className="p-3 bg-mist/30 rounded-xl border border-gray-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex-1 w-full sm:w-auto">
+              <label className="label">{lang === 'am' ? 'ተማሪዎቹ የሚመዘገቡበት ክፍል (Target Class) *' : 'Target Class *'}</label>
+              <select
+                className="select text-xs w-full font-bold"
+                value={bulkTargetClassId || classes[0]?.id || ''}
+                onChange={(e) => setBulkTargetClassId(e.target.value)}
+              >
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.level})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Mode switch */}
+            <div className="flex items-center gap-1.5 self-end sm:self-center">
+              <button
+                type="button"
+                onClick={() => setBulkMode('table')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  bulkMode === 'table' ? 'bg-ink text-gold' : 'bg-gray-100 text-slate hover:bg-gray-200'
+                }`}
+              >
+                {lang === 'am' ? 'በሠንጠረዥ (Table Entry)' : 'Table Entry'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkMode('csv')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                  bulkMode === 'csv' ? 'bg-ink text-gold' : 'bg-gray-100 text-slate hover:bg-gray-200'
+                }`}
+              >
+                <Upload size={12} />
+                <span>{lang === 'am' ? 'CSV ፋይል አስገባ' : 'Import CSV'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Mode 1: Table multi-row entry */}
+          {bulkMode === 'table' ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate">
+                  {lang === 'am' ? `ጠቅላላ ረድፎች፡ ${bulkRows.length} ተማሪዎች` : `Total Rows: ${bulkRows.length} students`}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDownloadSampleCsv}
+                    className="text-xs text-gold hover:underline font-semibold flex items-center gap-1"
+                  >
+                    <Download size={12} />
+                    <span>{lang === 'am' ? 'የናሙና CSV አውርድ' : 'Sample CSV'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddBulkRow}
+                    className="btn-gold text-xs py-1 px-2.5 font-semibold flex items-center gap-1"
+                  >
+                    <Plus size={12} />
+                    <span>{lang === 'am' ? 'ረድፍ ጨምር' : 'Add Row'}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto border border-gray-200 rounded-xl">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-100 text-ink sticky top-0">
+                    <tr>
+                      <th className="py-2 px-2 text-left w-6">#</th>
+                      <th className="py-2 px-2 text-left">{lang === 'am' ? 'ሙሉ ስም (አማርኛ)' : 'Amharic Name'} *</th>
+                      <th className="py-2 px-2 text-left">{lang === 'am' ? 'እንግሊዝኛ ስም' : 'English Name'}</th>
+                      <th className="py-2 px-2 text-center w-20">{lang === 'am' ? 'ጾታ' : 'Gender'}</th>
+                      <th className="py-2 px-2 text-left w-28">{lang === 'am' ? 'የልደት ቀን' : 'DOB'}</th>
+                      <th className="py-2 px-2 text-left">{lang === 'am' ? 'የወላጅ ስም' : 'Parent'} *</th>
+                      <th className="py-2 px-2 text-left w-28">{lang === 'am' ? 'ስልክ' : 'Phone'} *</th>
+                      <th className="py-2 px-1 text-center w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {bulkRows.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-gold/5">
+                        <td className="py-1 px-2 font-mono text-slate text-center">{idx + 1}</td>
+                        <td className="py-1 px-1">
+                          <input
+                            type="text"
+                            required
+                            placeholder="ሙሉ ስም"
+                            className="input py-1 px-2 text-xs w-full"
+                            value={row.fullNameAmharic}
+                            onChange={(e) => handleUpdateBulkRow(idx, 'fullNameAmharic', e.target.value)}
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <input
+                            type="text"
+                            placeholder="English Name"
+                            className="input py-1 px-2 text-xs w-full"
+                            value={row.fullName}
+                            onChange={(e) => handleUpdateBulkRow(idx, 'fullName', e.target.value)}
+                          />
+                        </td>
+                        <td className="py-1 px-1 text-center">
+                          <select
+                            className="select py-1 px-1 text-xs w-full"
+                            value={row.gender}
+                            onChange={(e) => handleUpdateBulkRow(idx, 'gender', e.target.value)}
+                          >
+                            <option value="MALE">{lang === 'am' ? 'ወንድ' : 'M'}</option>
+                            <option value="FEMALE">{lang === 'am' ? 'ሴት' : 'F'}</option>
+                          </select>
+                        </td>
+                        <td className="py-1 px-1">
+                          <input
+                            type="date"
+                            className="input py-1 px-1 text-xs w-full font-mono"
+                            value={row.dateOfBirth}
+                            onChange={(e) => handleUpdateBulkRow(idx, 'dateOfBirth', e.target.value)}
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <input
+                            type="text"
+                            required
+                            placeholder="የወላጅ ስም"
+                            className="input py-1 px-2 text-xs w-full"
+                            value={row.parentName}
+                            onChange={(e) => handleUpdateBulkRow(idx, 'parentName', e.target.value)}
+                          />
+                        </td>
+                        <td className="py-1 px-1">
+                          <input
+                            type="text"
+                            required
+                            placeholder="09..."
+                            className="input py-1 px-1 text-xs w-full font-mono"
+                            value={row.parentPhone}
+                            onChange={(e) => handleUpdateBulkRow(idx, 'parentPhone', e.target.value)}
+                          />
+                        </td>
+                        <td className="py-1 px-1 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveBulkRow(idx)}
+                            className="text-slate hover:text-red-600 p-1"
+                            title="Remove row"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            /* Mode 2: CSV upload and parse */
+            <div className="space-y-4 p-4 bg-mist/20 rounded-xl border border-dashed border-gray-300 text-center">
+              <div className="space-y-2">
+                <FileSpreadsheet className="mx-auto text-emerald-600" size={36} />
+                <h4 className="font-bold text-xs text-ink">
+                  {lang === 'am' ? 'የተማሪዎች CSV ፋይል ይጫኑ' : 'Upload Students CSV File'}
+                </h4>
+                <p className="text-[11px] text-slate max-w-md mx-auto">
+                  {lang === 'am'
+                    ? 'CSV ፋይሉ የሚከተሉትን ዓምዶች መያዝ አለበት፡ Amharic Name, English Name, Gender, Birth Date, Parent Name, Parent Phone'
+                    : 'The CSV file should contain columns: Amharic Name, English Name, Gender, Birth Date, Parent Name, Parent Phone'}
+                </p>
+              </div>
+
+              <div className="flex items-center justify-center gap-3">
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleCsvFileUpload}
+                  className="text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-gold file:text-ink hover:file:bg-gold/90 cursor-pointer"
+                />
+                <button
+                  type="button"
+                  onClick={handleDownloadSampleCsv}
+                  className="btn-outline text-xs py-1.5 px-3 flex items-center gap-1"
+                >
+                  <Download size={13} />
+                  <span>{lang === 'am' ? 'የናሙና CSV አውርድ' : 'Download Sample'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => setBulkModalOpen(false)}
+              className="btn-outline text-xs"
+            >
+              {t('cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={submittingBulk}
+              className="btn-gold text-xs font-bold py-2 px-4"
+            >
+              {submittingBulk ? t('saving') : lang === 'am' ? 'ተማሪዎቹን በሙሉ መዝግብ' : 'Register All Students'}
             </button>
           </div>
         </form>

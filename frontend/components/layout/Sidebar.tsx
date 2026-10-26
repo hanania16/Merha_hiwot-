@@ -12,6 +12,7 @@ import { useLang } from '@/lib/i18n';
 
 const EDUCATION_NAV = [
   { href: '/dashboard/education', key: 'dashboard', icon: GraduationCap },
+  { href: '/dashboard/education/classes', key: 'classList', icon: Users },
   { href: '/dashboard/education/grades', key: 'grades', icon: Award },
   { href: '/dashboard/education/certificates', key: 'certificates', icon: Scroll },
   { href: '/dashboard/education/communication', key: 'communication', icon: MessageSquare },

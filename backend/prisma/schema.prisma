@@ -234,11 +234,18 @@ model User {
 // ----------------------------------------------------------------------------
 
 model ClassGroup {
-  id       String     @id @default(uuid())
-  level    ClassLevel @unique
-  name     String
-  teachers Teacher[]
-  students Student[]
+  id          String     @id @default(uuid())
+  level       ClassLevel
+  name        String
+  description String?
+  roomNumber  String?
+  academicYear Int       @default(2018)
+  isActive    Boolean    @default(true)
+  orderIndex  Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @default(now()) @updatedAt
+  teachers    Teacher[]
+  students    Student[]
 
   @@map("class_groups")
 }

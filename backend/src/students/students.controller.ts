@@ -12,6 +12,12 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, CurrentUserPayload } from '../common/decorators/current-user.decorator';
 import { Role, StudentStatus } from '@prisma/client';
 
+import {
+  CreateClassDto,
+  UpdateClassDto,
+  BulkCreateStudentsDto,
+} from './dto/class.dto';
+
 @Controller('students')
 export class StudentsController {
   constructor(private studentsService: StudentsService) {}
@@ -22,9 +28,59 @@ export class StudentsController {
     return this.studentsService.findAll(query);
   }
 
+  // --------------------------------------------------------------------------
+  // CLASS MANAGEMENT ROUTES
+  // --------------------------------------------------------------------------
+
   @Get('classes')
-  findClasses() {
-    return this.studentsService.findClasses();
+  findClasses(@Query('includeInactive') includeInactive?: string) {
+    return this.studentsService.findClasses(includeInactive === 'true');
+  }
+
+  @Get('classes/:id')
+  findClassById(@Param('id') id: string) {
+    return this.studentsService.findClassById(id);
+  }
+
+  @Roles(Role.ADMINISTRATOR)
+  @Post('classes')
+  createClass(
+    @Body() dto: CreateClassDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.studentsService.createClass(dto, user.userId);
+  }
+
+  @Roles(Role.ADMINISTRATOR)
+  @Patch('classes/:id')
+  updateClass(
+    @Param('id') id: string,
+    @Body() dto: UpdateClassDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.studentsService.updateClass(id, dto, user.userId);
+  }
+
+  @Roles(Role.ADMINISTRATOR)
+  @Delete('classes/:id')
+  deleteClass(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.studentsService.deleteClass(id, user.userId);
+  }
+
+  // --------------------------------------------------------------------------
+  // BULK STUDENT REGISTRATION
+  // --------------------------------------------------------------------------
+
+  @Roles(Role.ADMINISTRATOR)
+  @Post('bulk')
+  bulkCreate(
+    @Body() dto: BulkCreateStudentsDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.studentsService.bulkCreate(dto, user.userId);
   }
 
   @Get(':id')

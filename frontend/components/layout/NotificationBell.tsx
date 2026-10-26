@@ -23,12 +23,17 @@ export function NotificationBell() {
   const ref = useRef<HTMLDivElement>(null);
 
   async function load() {
-    const [list, count] = await Promise.all([
-      api.get<NotificationItem[]>('/notifications').catch(() => []),
-      api.get<number>('/notifications/unread-count').catch(() => 0),
-    ]);
-    setItems(list);
-    setUnreadCount(count);
+    if (typeof window !== 'undefined' && !localStorage.getItem('mh_token')) return;
+    try {
+      const [list, count] = await Promise.all([
+        api.get<NotificationItem[]>('/notifications').catch(() => []),
+        api.get<number>('/notifications/unread-count').catch(() => 0),
+      ]);
+      setItems(list || []);
+      setUnreadCount(typeof count === 'number' ? count : 0);
+    } catch {
+      // ignore unauthenticated poll errors
+    }
   }
 
   useEffect(() => {

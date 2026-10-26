@@ -38,6 +38,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   });
 
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      localStorage.removeItem('mh_token');
+      localStorage.removeItem('mh_user');
+      window.location.href = '/login';
+    }
     const body = await res.json().catch(() => ({}));
     const msg = extractErrorMessage(body, res.statusText);
     throw new ApiError(msg, res.status);

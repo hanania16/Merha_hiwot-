@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { CreateStudentDto } from './dto/create-student.dto';
@@ -9,6 +9,11 @@ import {
   ToggleSuspensionDto,
   UpdateBehaviorStatusDto,
 } from './dto/behavior-student.dto';
+import {
+  CreateClassDto,
+  UpdateClassDto,
+  BulkCreateStudentsDto,
+} from './dto/class.dto';
 import { currentEthiopianYear } from '../common/constants/ethiopian-calendar';
 import { BehaviorRecordType, BehaviorStatus, StudentStatus } from '@prisma/client';
 
@@ -244,8 +249,151 @@ export class StudentsService {
     return { data: results, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
   }
 
-  findClasses() {
-    return this.prisma.classGroup.findMany({ include: { teachers: true } });
+  async findClasses(includeInactive = false) {
+    return this.prisma.classGroup.findMany({
+      where: includeInactive ? {} : { isActive: true },
+      include: {
+        teachers: true,
+        _count: { select: { students: true } },
+      },
+      orderBy: [{ orderIndex: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async findClassById(id: string) {
+    const classGroup = await this.prisma.classGroup.findUnique({
+      where: { id },
+      include: {
+        teachers: true,
+        _count: { select: { students: true } },
+      },
+    });
+    if (!classGroup) throw new NotFoundException('Class not found');
+    return classGroup;
+  }
+
+  async createClass(dto: CreateClassDto, userId: string) {
+    const { teacherIds, ...data } = dto;
+    const classGroup = await this.prisma.classGroup.create({
+      data: {
+        ...data,
+        teachers:
+          teacherIds && teacherIds.length > 0
+            ? { connect: teacherIds.map((tid) => ({ id: tid })) }
+            : undefined,
+      },
+      include: {
+        teachers: true,
+        _count: { select: { students: true } },
+      },
+    });
+
+    await this.audit.log({
+      userId,
+      action: 'CLASS_CREATED',
+      entityType: 'ClassGroup',
+      entityId: classGroup.id,
+      newValue: classGroup,
+    });
+
+    return classGroup;
+  }
+
+  async updateClass(id: string, dto: UpdateClassDto, userId: string) {
+    const existing = await this.prisma.classGroup.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Class not found');
+
+    const { teacherIds, ...data } = dto;
+    const updated = await this.prisma.classGroup.update({
+      where: { id },
+      data: {
+        ...data,
+        teachers: teacherIds
+          ? { set: teacherIds.map((tid) => ({ id: tid })) }
+          : undefined,
+      },
+      include: {
+        teachers: true,
+        _count: { select: { students: true } },
+      },
+    });
+
+    await this.audit.log({
+      userId,
+      action: 'CLASS_UPDATED',
+      entityType: 'ClassGroup',
+      entityId: id,
+      oldValue: existing,
+      newValue: updated,
+    });
+
+    return updated;
+  }
+
+  async deleteClass(id: string, userId: string) {
+    const existing = await this.prisma.classGroup.findUnique({
+      where: { id },
+      include: { _count: { select: { students: true } } },
+    });
+    if (!existing) throw new NotFoundException('Class not found');
+
+    if (existing._count.students > 0) {
+      throw new BadRequestException(
+        `ይህንን ክፍል ማጥፋት አይቻልም፤ ${existing._count.students} ተማሪዎች ተመዝግበውበታል። እባክዎ መጀመሪያ ተማሪዎቹን ወደ ሌላ ክፍል ያዛውሩ። (Cannot delete class with ${existing._count.students} enrolled students. Please reassign them first.)`,
+      );
+    }
+
+    await this.prisma.classGroup.delete({ where: { id } });
+
+    await this.audit.log({
+      userId,
+      action: 'CLASS_DELETED',
+      entityType: 'ClassGroup',
+      entityId: id,
+      oldValue: existing,
+    });
+
+    return { success: true, message: 'Class deleted successfully' };
+  }
+
+  async bulkCreate(dto: BulkCreateStudentsDto, userId: string) {
+    if (!dto.students || dto.students.length === 0) {
+      throw new BadRequestException('No student records provided in bulk request');
+    }
+
+    const createdList = [];
+    for (const item of dto.students) {
+      const studentCode = await this.nextStudentCode();
+      const { registrationDate, ...rest } = item;
+      const student = await this.prisma.student.create({
+        data: {
+          ...rest,
+          studentCode,
+          dateOfBirth: new Date(item.dateOfBirth),
+          registrationDate: registrationDate ? new Date(registrationDate) : undefined,
+          createdById: userId,
+        },
+        include: { class: true },
+      });
+      createdList.push({
+        ...student,
+        age: calculateAge(student.dateOfBirth),
+      });
+    }
+
+    await this.audit.log({
+      userId,
+      action: 'STUDENTS_BULK_CREATED',
+      entityType: 'Student',
+      entityId: 'bulk',
+      newValue: { count: createdList.length },
+    });
+
+    return {
+      success: true,
+      count: createdList.length,
+      students: createdList,
+    };
   }
 
   // --------------------------------------------------------------------------

@@ -29,6 +29,8 @@ const DICTIONARY: Record<string, Entry> = {
   recordPayment: { en: 'Record Payment', am: 'ክፍያ መዝግብ' },
   search: { en: 'Search', am: 'ፈልግ' },
   studentManagementAttendance: { en: 'Student Management', am: 'የተማሪ አስተዳደር' },
+  classes: { en: 'Classes & Sections', am: 'ክፍሎችና ምድቦች' },
+  classList: { en: 'Class List & Roster', am: 'የክፍል ተማሪዎች ዝርዝር' },
   education: { en: 'Education Dept', am: 'ትምህርት ክፍል' },
   timhirtKfl: { en: 'Education Dept (ትምህርት ክፍል)', am: 'ትምህርት ክፍል' },
   courses: { en: 'Courses & Curriculum', am: 'የትምህርት ዓይነቶች' },

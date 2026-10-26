@@ -125,7 +125,7 @@ export default function EducationDashboardPage() {
           </div>
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <span>{lang === 'am' ? 'ደብረ መዊዕ መርሃ ህይወት ሰንበት ትምህርት ቤት' : 'Debre Mewee Merha Hiwot Sunday School'}</span>
+              <span>{lang === 'am' ? 'የመርሃ ህይወት ሰንበት ትምህርት ቤት' : 'Merha Hiwot Sunday School'}</span>
               <span className="text-xs bg-gold/20 text-gold px-2.5 py-0.5 rounded-full border border-gold/30">
                 {lang === 'am' ? 'የትምህርት ክፍል' : 'Academics'}
               </span>

@@ -54,6 +54,8 @@ interface Stats {
     id: string;
     name: string;
     level: string;
+    roomNumber?: string | null;
+    teachers?: { id: string; fullName: string }[];
     studentCount: number;
   }[];
 }
@@ -195,117 +197,84 @@ export default function EducationDashboardPage() {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* ማዕከላውያን */}
-              <div className="bg-mist/30 rounded-xl p-3.5 border border-gray-100 space-y-3">
-                <div className="flex items-center justify-between border-b border-gray-200/60 pb-2">
-                  <span className="font-bold text-xs text-ink uppercase tracking-wider flex items-center gap-1.5">
-                    <GraduationCap size={15} className="text-gold" />
-                    {lang === 'am' ? 'ማዕከላውያን (4ኛ እና 5ኛ ክፍል)' : 'Intermediate (Grades 4-5)'}
-                  </span>
-                  <span className="text-[10px] font-semibold text-slate bg-white px-2 py-0.5 rounded border border-gray-200">
-                    ቅዳሜና እሁድ
-                  </span>
-                </div>
-
-                <div className="text-xs space-y-2">
-                  <div className="flex items-center justify-between text-slate">
-                    <span className="font-medium text-ink">ቅዳሜ 8:00 - 10:00</span>
-                    <span className="text-gold font-semibold">መዝሙር</span>
-                  </div>
-
-                  <div className="pt-1.5 border-t border-dashed border-gray-200">
-                    <p className="font-bold text-[11px] text-ink mb-1">እሁድ - 4ኛ ክፍል፡</p>
-                    <div className="space-y-1 pl-2 text-[11px]">
-                      <div className="flex justify-between">
-                        <span className="text-slate">3:30 - 4:30 · ክርስቲያናዊ ስነምግባር</span>
-                        <strong className="text-ink">ዳዊት አብርሃም</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate">4:30 - 5:30 · የመጽሃፍ ቅዱስ ጥናት</span>
-                        <strong className="text-ink">አቤኔዘር ግደይ</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate">5:30 - 6:30 · መሰረተ ኃይማኖት</span>
-                        <strong className="text-ink">ብሩክ ክብረአብ</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-1.5 border-t border-dashed border-gray-200">
-                    <p className="font-bold text-[11px] text-ink mb-1">እሁድ - 5ኛ ክፍል፡</p>
-                    <div className="space-y-1 pl-2 text-[11px]">
-                      <div className="flex justify-between">
-                        <span className="text-slate">3:30 - 4:30 · ክርስቲያናዊ ስነምግባር</span>
-                        <strong className="text-ink">ብሩክ ክብረአብ</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate">4:30 - 5:30 · የመጽሃፍ ቅዱስ ጥናት</span>
-                        <strong className="text-ink">ዳዊት አብርሃም</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate">5:30 - 6:30 · መሰረተ ኃይማኖት</span>
-                        <strong className="text-ink">አቤኔዘር ግደይ</strong>
-                      </div>
-                    </div>
-                  </div>
+            {!stats?.classGroups || stats.classGroups.length === 0 ? (
+              <div className="text-center py-8 px-4 bg-mist/20 rounded-xl border border-dashed border-gray-200">
+                <GraduationCap size={36} className="mx-auto text-gold/60 mb-2" />
+                <h4 className="text-sm font-bold text-ink">
+                  {lang === 'am' ? 'ምንም የተመዘገበ ክፍል የለም' : 'No Class Groups Registered Yet'}
+                </h4>
+                <p className="text-xs text-slate mt-1 max-w-md mx-auto">
+                  {lang === 'am'
+                    ? 'የሰንበት ትምህርት ቤት ክፍሎችንና መማሪያ ክፍሎችን ለመመዝገብ ከታች ያለውን ቁልፍ ይጠቀሙ።'
+                    : 'Start by adding your Sunday school classes and assigning teachers.'}
+                </p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  <Link href="/dashboard/education/classes" className="btn-gold text-xs py-2 px-3 font-semibold flex items-center gap-1.5">
+                    <GraduationCap size={14} />
+                    {lang === 'am' ? 'አዲስ ክፍል መዝግብ' : 'Add Class'}
+                  </Link>
+                  <Link href="/dashboard/education/courses" className="btn-outline text-xs py-2 px-3 font-semibold flex items-center gap-1.5">
+                    <BookOpen size={14} />
+                    {lang === 'am' ? 'የትምህርት ዓይነቶች' : 'Courses'}
+                  </Link>
                 </div>
               </div>
-
-              {/* ወጣቶች */}
-              <div className="bg-mist/30 rounded-xl p-3.5 border border-gray-100 space-y-3">
-                <div className="flex items-center justify-between border-b border-gray-200/60 pb-2">
-                  <span className="font-bold text-xs text-ink uppercase tracking-wider flex items-center gap-1.5">
-                    <GraduationCap size={15} className="text-gold" />
-                    {lang === 'am' ? 'ወጣቶች (7ኛ ክፍል)' : 'Youth (Grade 7)'}
-                  </span>
-                  <span className="text-[10px] font-semibold text-slate bg-white px-2 py-0.5 rounded border border-gray-200">
-                    ቅዳሜና እሁድ
-                  </span>
-                </div>
-
-                <div className="text-xs space-y-2">
-                  <div className="space-y-1 text-[11px]">
-                    <div className="flex justify-between">
-                      <span className="text-slate">ቅዳሜ 7:30 - 10:00 · መዝሙር</span>
-                      <span className="text-gold font-semibold">የጋራ</span>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {stats.classGroups.map((cg) => (
+                  <div key={cg.id} className="bg-mist/30 rounded-xl p-3.5 border border-gray-100 space-y-3">
+                    <div className="flex items-center justify-between border-b border-gray-200/60 pb-2">
+                      <span className="font-bold text-xs text-ink uppercase tracking-wider flex items-center gap-1.5">
+                        <GraduationCap size={15} className="text-gold" />
+                        <span>{cg.name}</span>
+                      </span>
+                      <span className="text-[10px] font-semibold text-slate bg-white px-2 py-0.5 rounded border border-gray-200">
+                        {cg.studentCount} {lang === 'am' ? 'ተማሪዎች' : 'students'}
+                      </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate">ቅዳሜ 10:00 - 12:00 · ስርዓተ ቤ/ክ</span>
-                      <strong className="text-ink">መ/ር ሮቤል</strong>
+
+                    <div className="text-xs space-y-2">
+                      {cg.roomNumber && (
+                        <div className="flex items-center justify-between text-slate">
+                          <span>{lang === 'am' ? 'መማሪያ ክፍል' : 'Room'}:</span>
+                          <span className="font-bold text-ink">{cg.roomNumber}</span>
+                        </div>
+                      )}
+
+                      {cg.teachers && cg.teachers.length > 0 && (
+                        <div className="pt-1.5 border-t border-dashed border-gray-200">
+                          <span className="text-[11px] text-slate block mb-1">
+                            {lang === 'am' ? 'የክፍሉ መምህራን' : 'Assigned Teachers'}:
+                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {cg.teachers.map((t) => (
+                              <span key={t.id} className="text-[10px] font-medium bg-white px-2 py-0.5 rounded border border-gray-200 text-ink">
+                                {t.fullName}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="pt-2 flex items-center justify-between border-t border-gray-100">
+                        <Link
+                          href={`/dashboard/education/classes?classId=${cg.id}`}
+                          className="text-[11px] text-gold font-bold hover:underline flex items-center gap-1"
+                        >
+                          {lang === 'am' ? 'የተማሪዎች ዝርዝር' : 'View Roster'} <ArrowRight size={12} />
+                        </Link>
+                        <Link
+                          href={`/dashboard/education/grades?classLevel=${cg.level}`}
+                          className="text-[11px] text-slate hover:text-ink font-medium"
+                        >
+                          {lang === 'am' ? 'ውጤት መዝግብ' : 'Grades'}
+                        </Link>
+                      </div>
                     </div>
                   </div>
-
-                  <div className="pt-1.5 border-t border-dashed border-gray-200">
-                    <p className="font-bold text-[11px] text-ink mb-1">እሁድ - 7ኛ ክፍል (1ኛ ሴሚስተር)፡</p>
-                    <div className="space-y-1 pl-2 text-[11px]">
-                      <div className="flex justify-between">
-                        <span className="text-slate">3:30 - 4:30 · ክርስቲያናዊ ስነምግባር</span>
-                        <strong className="text-ink">መ/ር ባሻ</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate">4:30 - 5:30 · መሰረተ ኃይማኖት</span>
-                        <strong className="text-ink">መ/ር መልካሙ</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-1.5 border-t border-dashed border-gray-200">
-                    <p className="font-bold text-[11px] text-ink mb-1">እሁድ - 7ኛ ክፍል (2ኛ ሴሚስተር)፡</p>
-                    <div className="space-y-1 pl-2 text-[11px]">
-                      <div className="flex justify-between">
-                        <span className="text-slate">9:00 - 10:00 · ልሳነ ግዕዝ</span>
-                        <strong className="text-ink">መ/ር መጋቤ ሐዲስ አበረሃም</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate">10:00 - 12:00 · የቤ/ክ ታሪክ</span>
-                        <strong className="text-ink">መ/ር ሮቤል</strong>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                ))}
               </div>
-            </div>
+            )}
           </div>
 
           {/* Teacher-Admin Notice Board */}

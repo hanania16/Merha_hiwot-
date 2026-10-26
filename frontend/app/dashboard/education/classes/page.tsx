@@ -24,6 +24,9 @@ import {
   BookOpen,
   Eye,
   FileSpreadsheet,
+  Plus,
+  Edit,
+  Trash2,
 } from 'lucide-react';
 
 interface ClassGroupItem {
@@ -76,9 +79,112 @@ export default function ClassListPage() {
   const [genderFilter, setGenderFilter] = useState<'ALL' | 'MALE' | 'FEMALE'>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
 
+  // Class CRUD modal state
+  const [teachers, setTeachers] = useState<{ id: string; fullName: string }[]>([]);
+  const [classModalOpen, setClassModalOpen] = useState(false);
+  const [editingClass, setEditingClass] = useState<ClassGroupItem | null>(null);
+  const [className, setClassName] = useState('');
+  const [classLevel, setClassLevel] = useState<'CLASS_1_3' | 'CLASS_4_6' | 'CLASS_7_12'>('CLASS_1_3');
+  const [classRoomNumber, setClassRoomNumber] = useState('');
+  const [classDescription, setClassDescription] = useState('');
+  const [classAcademicYear, setClassAcademicYear] = useState(2018);
+  const [classTeacherIds, setClassTeacherIds] = useState<string[]>([]);
+  const [savingClass, setSavingClass] = useState(false);
+  const [classError, setClassError] = useState('');
+
   useEffect(() => {
     loadClasses();
+    loadTeachers();
   }, []);
+
+  async function loadTeachers() {
+    try {
+      const res = await api.get<any[]>('/users?role=TEACHER');
+      setTeachers(res || []);
+    } catch {}
+  }
+
+  function handleOpenCreateClass() {
+    setEditingClass(null);
+    setClassName('');
+    setClassLevel('CLASS_1_3');
+    setClassRoomNumber('');
+    setClassDescription('');
+    setClassAcademicYear(2018);
+    setClassTeacherIds([]);
+    setClassError('');
+    setClassModalOpen(true);
+  }
+
+  function handleOpenEditClass(c: ClassGroupItem) {
+    setEditingClass(c);
+    setClassName(c.name);
+    setClassLevel(c.level);
+    setClassRoomNumber(c.roomNumber || '');
+    setClassDescription(c.description || '');
+    setClassAcademicYear(c.academicYear || 2018);
+    setClassTeacherIds((c.teachers || []).map((t) => t.id));
+    setClassError('');
+    setClassModalOpen(true);
+  }
+
+  async function handleSaveClass(e: React.FormEvent) {
+    e.preventDefault();
+    if (!className.trim()) {
+      setClassError(lang === 'am' ? 'እባክዎ የክፍሉን ስም ያስገቡ' : 'Please enter class name');
+      return;
+    }
+
+    try {
+      setSavingClass(true);
+      setClassError('');
+      if (editingClass) {
+        await api.patch(`/students/classes/${editingClass.id}`, {
+          name: className.trim(),
+          level: classLevel,
+          roomNumber: classRoomNumber.trim() || undefined,
+          description: classDescription.trim() || undefined,
+          academicYear: Number(classAcademicYear),
+          teacherIds: classTeacherIds,
+        });
+      } else {
+        const created = await api.post<ClassGroupItem>('/students/classes', {
+          name: className.trim(),
+          level: classLevel,
+          roomNumber: classRoomNumber.trim() || undefined,
+          description: classDescription.trim() || undefined,
+          academicYear: Number(classAcademicYear),
+          teacherIds: classTeacherIds,
+        });
+        setSelectedClassId(created.id);
+      }
+      setClassModalOpen(false);
+      await loadClasses();
+    } catch (err: any) {
+      setClassError(err?.message || (lang === 'am' ? 'ክፍሉን ማስቀመጥ አልተቻለም' : 'Failed to save class'));
+    } finally {
+      setSavingClass(false);
+    }
+  }
+
+  async function handleDeleteClass(id: string) {
+    if (
+      !confirm(
+        lang === 'am'
+          ? 'እርግጠኛ ነዎት ይህን ክፍል ማጥፋት ይፈልጋሉ?'
+          : 'Are you sure you want to delete this class?'
+      )
+    )
+      return;
+
+    try {
+      await api.delete(`/students/classes/${id}`);
+      setSelectedClassId('');
+      await loadClasses();
+    } catch (err: any) {
+      alert(err?.message || (lang === 'am' ? 'ክፍሉን ማጥፋት አልተቻለም' : 'Failed to delete class'));
+    }
+  }
 
   async function loadClasses() {
     try {
@@ -208,6 +314,13 @@ export default function ClassListPage() {
         >
           <div className="flex items-center gap-2">
             <button
+              onClick={handleOpenCreateClass}
+              className="btn-gold flex items-center gap-1.5 text-xs font-semibold py-1.5 px-3"
+            >
+              <Plus size={14} />
+              <span>{lang === 'am' ? 'አዲስ ክፍል መዝግብ' : 'Add Class'}</span>
+            </button>
+            <button
               onClick={handleExportCsv}
               disabled={filteredStudents.length === 0}
               className="btn-outline flex items-center gap-1.5 text-xs font-semibold py-1.5 px-3"
@@ -218,7 +331,7 @@ export default function ClassListPage() {
             <button
               onClick={handlePrint}
               disabled={filteredStudents.length === 0}
-              className="btn-gold flex items-center gap-1.5 text-xs font-semibold py-1.5 px-3"
+              className="btn-outline flex items-center gap-1.5 text-xs font-semibold py-1.5 px-3"
             >
               <Printer size={14} />
               <span>{lang === 'am' ? 'መዝገብ አትም' : 'Print Roster'}</span>
@@ -236,46 +349,96 @@ export default function ClassListPage() {
               {lang === 'am' ? 'ክፍል ይምረጡ (Select Class):' : 'Select Class:'}
             </span>
           </div>
-          {currentUser?.role === 'ADMINISTRATOR' && (
-            <Link
-              href="/dashboard/settings"
-              className="text-xs text-gold hover:underline font-semibold flex items-center gap-1"
+          <div className="flex items-center gap-2">
+            {selectedClass && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleOpenEditClass(selectedClass)}
+                  className="text-xs text-slate hover:text-ink font-semibold flex items-center gap-1 border border-gray-200 px-2.5 py-1 rounded-lg hover:bg-gray-50 transition"
+                  title={lang === 'am' ? 'የተመረጠውን ክፍል አርትዕ' : 'Edit Selected Class'}
+                >
+                  <Edit size={13} className="text-blue-600" />
+                  <span>{lang === 'am' ? 'ክፍል አርትዕ' : 'Edit Class'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteClass(selectedClass.id)}
+                  className="text-xs text-rose-600 hover:text-rose-700 font-semibold flex items-center gap-1 border border-rose-200 px-2.5 py-1 rounded-lg hover:bg-rose-50 transition"
+                  title={lang === 'am' ? 'ይህን ክፍል አጥፋ' : 'Delete Selected Class'}
+                >
+                  <Trash2 size={13} />
+                  <span>{lang === 'am' ? 'አጥፋ' : 'Delete'}</span>
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={handleOpenCreateClass}
+              className="text-xs text-gold hover:underline font-semibold flex items-center gap-1 ml-1"
             >
-              <span>+ {lang === 'am' ? 'አዲስ ክፍል በቅንብሮች ጨምር' : 'Manage Classes in Settings'}</span>
-            </Link>
-          )}
+              <Plus size={13} />
+              <span>{lang === 'am' ? 'አዲስ ክፍል' : 'Add Class'}</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {classes.map((cls) => {
-            const isSelected = cls.id === selectedClassId;
-            return (
-              <button
-                key={cls.id}
-                onClick={() => setSelectedClassId(cls.id)}
-                className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
-                  isSelected
-                    ? 'bg-ink text-gold border-gold shadow-md'
-                    : 'bg-mist/30 text-slate hover:bg-gray-100 border-gray-200'
-                }`}
-              >
-                <span>{cls.name}</span>
-                {cls.roomNumber && (
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                    isSelected ? 'bg-white/20 text-white' : 'bg-gray-200 text-slate'
-                  }`}>
-                    {cls.roomNumber}
+        {classes.length === 0 ? (
+          <div className="p-8 text-center border-2 border-dashed border-gray-200 rounded-xl space-y-3">
+            <Building className="mx-auto text-slate/40" size={36} />
+            <p className="text-sm font-bold text-ink">
+              {lang === 'am' ? 'ምንም ክፍሎች እስካሁን አልተመዘገቡም' : 'No classes registered yet'}
+            </p>
+            <p className="text-xs text-slate max-w-md mx-auto">
+              {lang === 'am'
+                ? 'ተማሪዎችን ለመመዝገብ መጀመሪያ ክፍሎችን ማዘጋጀት ያስፈልጋል። ከዚህ በታች ያለውን ቁልፍ በመጫን አዲስ ክፍል ይመዝግቡ።'
+                : 'To register students, you first need to configure classes. Click below to add your first class.'}
+            </p>
+            <button
+              type="button"
+              onClick={handleOpenCreateClass}
+              className="btn-gold text-xs font-bold py-2 px-4 inline-flex items-center gap-1.5"
+            >
+              <Plus size={15} />
+              <span>{lang === 'am' ? '+ አዲስ ክፍል መዝግብ' : '+ Add New Class'}</span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {classes.map((cls) => {
+              const isSelected = cls.id === selectedClassId;
+              return (
+                <button
+                  key={cls.id}
+                  onClick={() => setSelectedClassId(cls.id)}
+                  className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
+                    isSelected
+                      ? 'bg-ink text-gold border-gold shadow-md'
+                      : 'bg-mist/30 text-slate hover:bg-gray-100 border-gray-200'
+                  }`}
+                >
+                  <span>{cls.name}</span>
+                  {cls.roomNumber && (
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                        isSelected ? 'bg-white/20 text-white' : 'bg-gray-200 text-slate'
+                      }`}
+                    >
+                      {cls.roomNumber}
+                    </span>
+                  )}
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                      isSelected ? 'bg-gold text-ink' : 'bg-gray-200 text-slate'
+                    }`}
+                  >
+                    {cls._count?.students ?? 0}
                   </span>
-                )}
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                  isSelected ? 'bg-gold text-ink' : 'bg-gray-200 text-slate'
-                }`}>
-                  {cls._count?.students ?? 0}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Class Statistics Overview Cards (print:hidden) */}
@@ -655,6 +818,162 @@ export default function ClassListPage() {
           </div>
         </div>
       </div>
+
+      {/* Class Create / Edit Modal */}
+      <Modal
+        open={classModalOpen}
+        onClose={() => setClassModalOpen(false)}
+        title={
+          editingClass
+            ? lang === 'am'
+              ? 'የክፍል መረጃ ማሻሻያ (Edit Class)'
+              : 'Edit Class'
+            : lang === 'am'
+            ? 'አዲስ ክፍል መመዝገቢያ (Add New Class)'
+            : 'Add New Class'
+        }
+      >
+        <form onSubmit={handleSaveClass} className="space-y-4">
+          {classError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs">
+              {classError}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-bold text-ink mb-1">
+              {lang === 'am' ? 'የክፍሉ ስም *' : 'Class Name *'}
+            </label>
+            <input
+              type="text"
+              required
+              value={className}
+              onChange={(e) => setClassName(e.target.value)}
+              placeholder={lang === 'am' ? 'ለምሳሌ፡ ክፍል 1-3 (ሀ)' : 'e.g. Class 1-3 (A)'}
+              className="input w-full text-xs"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-ink mb-1">
+                {lang === 'am' ? 'የትምህርት ደረጃ' : 'Level'}
+              </label>
+              <select
+                value={classLevel}
+                onChange={(e) => setClassLevel(e.target.value as any)}
+                className="select w-full text-xs font-medium"
+              >
+                <option value="CLASS_1_3">{lang === 'am' ? 'ክፍል 1-3 (ሕፃናት)' : 'Class 1-3 (Children)'}</option>
+                <option value="CLASS_4_6">{lang === 'am' ? 'ክፍል 4-6 (ማዕከላዊ)' : 'Class 4-6 (Intermediate)'}</option>
+                <option value="CLASS_7_12">{lang === 'am' ? 'ክፍል 7-12 (ወጣቶች)' : 'Class 7-12 (Youth)'}</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-ink mb-1">
+                {lang === 'am' ? 'የትምህርት ዓመት (ዓ.ም)' : 'Academic Year'}
+              </label>
+              <input
+                type="number"
+                value={classAcademicYear}
+                onChange={(e) => setClassAcademicYear(Number(e.target.value))}
+                className="input w-full text-xs"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-ink mb-1">
+              {lang === 'am' ? 'የክፍል / መማሪያ ክፍል ቁጥር (አማራጭ)' : 'Room Number (Optional)'}
+            </label>
+            <input
+              type="text"
+              value={classRoomNumber}
+              onChange={(e) => setClassRoomNumber(e.target.value)}
+              placeholder={lang === 'am' ? 'ለምሳሌ፡ ክፍል 101' : 'e.g. Room 101'}
+              className="input w-full text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-ink mb-1">
+              {lang === 'am' ? 'መግለጫ (አማራጭ)' : 'Description (Optional)'}
+            </label>
+            <textarea
+              rows={2}
+              value={classDescription}
+              onChange={(e) => setClassDescription(e.target.value)}
+              placeholder={lang === 'am' ? 'ስለ ክፍሉ አጭር መግለጫ…' : 'Brief description of the class…'}
+              className="input w-full text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-ink mb-1">
+              {lang === 'am' ? 'የክፍሉ አስተማሪ(ዎች)' : 'Assigned Teacher(s)'}
+            </label>
+            {teachers.length === 0 ? (
+              <p className="text-xs text-slate italic">
+                {lang === 'am' ? 'ምንም አስተማሪዎች አልተገኙም' : 'No teachers registered yet'}
+              </p>
+            ) : (
+              <div className="max-h-36 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
+                {teachers.map((t) => {
+                  const checked = classTeacherIds.includes(t.id);
+                  return (
+                    <label
+                      key={t.id}
+                      className="flex items-center gap-2 text-xs hover:bg-gray-50 p-1 rounded cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setClassTeacherIds([...classTeacherIds, t.id]);
+                          } else {
+                            setClassTeacherIds(classTeacherIds.filter((id) => id !== t.id));
+                          }
+                        }}
+                        className="rounded text-gold focus:ring-gold"
+                      />
+                      <span>{t.fullName}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => setClassModalOpen(false)}
+              className="btn-outline text-xs py-2 px-4"
+            >
+              {lang === 'am' ? 'ይቅር' : 'Cancel'}
+            </button>
+            <button
+              type="submit"
+              disabled={savingClass}
+              className="btn-gold text-xs font-bold py-2 px-5"
+            >
+              {savingClass
+                ? lang === 'am'
+                  ? 'በመመዝገብ ላይ…'
+                  : 'Saving…'
+                : editingClass
+                ? lang === 'am'
+                  ? 'አሻሽል'
+                  : 'Update'
+                : lang === 'am'
+                ? 'መዝግብ'
+                : 'Save Class'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

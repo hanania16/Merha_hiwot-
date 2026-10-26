@@ -185,36 +185,29 @@ export default function CertificatesPage() {
   const [titleEnglish, setTitleEnglish] = useState('Certificate of Academic Excellence & High Honor');
   const [recipientNameAmharic, setRecipientNameAmharic] = useState('');
   const [recipientNameEnglish, setRecipientNameEnglish] = useState('');
-  const [courseOrClass, setCourseOrClass] = useState('ክፍል 7-12 (ሰንበት ትምህርት)');
+  const [courseOrClass, setCourseOrClass] = useState('');
   const [academicYear, setAcademicYear] = useState(2018);
-  const [issueDateEthiopian, setIssueDateEthiopian] = useState('ሰኔ 30 ቀን 2018 ዓ.ም');
-  const [overallGrade, setOverallGrade] = useState('A+ (95.0%)');
-  const [rankText, setRankText] = useState('1ኛ ደረጃ (ከ 15 ተማሪዎች)');
-  const [numberOfCourses, setNumberOfCourses] = useState<number | ''>(4);
-  const [totalScore, setTotalScore] = useState<number | ''>(368);
-  const [averageScore, setAverageScore] = useState<number | ''>(92.0);
-  const [courseBreakdownList, setCourseBreakdownList] = useState<CourseBreakdownItem[]>([
-    { code: 'ETH-101', nameAmharic: 'ስነ ምግባር', score: 95, letterGrade: 'A+' },
-    { code: 'BIB-101', nameAmharic: 'መጽሐፍ ቅዱስ ጥናት', score: 88, letterGrade: 'A' },
-    { code: 'DOG-101', nameAmharic: 'ነገረ መለኮት', score: 92, letterGrade: 'A' },
-    { code: 'HIS-101', nameAmharic: 'የቤተክርስቲያን ታሪክ', score: 93, letterGrade: 'A' },
-  ]);
-  const [customMessageAmharic, setCustomMessageAmharic] = useState(
-    'በደብረ አሚን መርሃ ህይወት ሰንበት ትምህርት ቤት በ2018 ዓ.ም የትምህርት ዘመን በነገረ ሃይማኖትና መንፈሳዊ ትምህርቶች ከፍተኛ ትጋትና የላቀ ክርስቲያናዊ ሥነ ምግባር በማሳየት 1ኛ ደረጃ ይዞ ላጠናቀቀው ተማሪ የተሰጠ የክብር ምስክር ወረቀት።',
-  );
+  const [issueDateEthiopian, setIssueDateEthiopian] = useState('');
+  const [overallGrade, setOverallGrade] = useState('');
+  const [rankText, setRankText] = useState('');
+  const [numberOfCourses, setNumberOfCourses] = useState<number | ''>('');
+  const [totalScore, setTotalScore] = useState<number | ''>('');
+  const [averageScore, setAverageScore] = useState<number | ''>('');
+  const [courseBreakdownList, setCourseBreakdownList] = useState<CourseBreakdownItem[]>([]);
+  const [customMessageAmharic, setCustomMessageAmharic] = useState('');
   const [bibleVerseAmharic, setBibleVerseAmharic] = useState(BIBLE_VERSES[0]);
 
   // Signatories & Signatures
   const [signatory1Title, setSignatory1Title] = useState('የክፍሉ መምህር');
-  const [signatory1Name, setSignatory1Name] = useState('መምህር ተክለ ማርያም');
+  const [signatory1Name, setSignatory1Name] = useState('');
   const [signatory1Signature, setSignatory1Signature] = useState<string | null>(null);
 
   const [signatory2Title, setSignatory2Title] = useState('የትምህርት ክፍል ኃላፊ');
-  const [signatory2Name, setSignatory2Name] = useState('ዲ/ን ዮሐንስ ወ/ሥላሴ');
+  const [signatory2Name, setSignatory2Name] = useState('');
   const [signatory2Signature, setSignatory2Signature] = useState<string | null>(null);
 
   const [signatory3Title, setSignatory3Title] = useState('የሰንበት ት/ቤቱ ሰብሳቢ');
-  const [signatory3Name, setSignatory3Name] = useState('መጋቤ ሐዲስ ኃይለ ሚካኤል');
+  const [signatory3Name, setSignatory3Name] = useState('');
   const [signatory3Signature, setSignatory3Signature] = useState<string | null>(null);
 
   const [borderStyle, setBorderStyle] = useState<string>('ETHIOPIC_GOLD_DOUBLE');
@@ -244,10 +237,11 @@ export default function CertificatesPage() {
         if (settingsRes.teachingAdminName) setSignatory2Name(settingsRes.teachingAdminName);
         if (settingsRes.churchAdminName) setSignatory3Name(settingsRes.churchAdminName);
         if (settingsRes.accentColorHex) setThemeColor(settingsRes.accentColorHex);
+        if (settingsRes.currentAcademicYear) setAcademicYear(settingsRes.currentAcademicYear);
       }
 
       if (allStudents.length > 0) {
-        handleStudentSelect(allStudents[0]);
+        await handleStudentSelect(allStudents[0]);
       }
     } catch (err) {
       console.error('Failed to load certificates data:', err);
@@ -283,11 +277,51 @@ export default function CertificatesPage() {
     }
   }
 
-  function handleStudentSelect(s: Student) {
+  async function handleStudentSelect(s: Student) {
     setSelectedStudentId(s.id);
     setRecipientNameAmharic(s.fullNameAmharic || s.fullName);
     setRecipientNameEnglish(s.fullName);
     setCourseOrClass(`${s.class?.name || 'ሰንበት ትምህርት'}`);
+    try {
+      const grades = await api.get<any[]>(`/education/grades?studentId=${s.id}`);
+      if (grades && grades.length > 0) {
+        const approved = grades.filter((g: any) => g.status === 'APPROVED' || g.status === 'SUBMITTED');
+        if (approved.length > 0) {
+          const breakdown: CourseBreakdownItem[] = approved.map((g: any) => ({
+            courseId: g.courseId,
+            code: g.course?.code || '',
+            nameAmharic: g.course?.nameAmharic || g.course?.name || '',
+            score: Number(g.totalScore),
+            letterGrade: g.letterGrade || '',
+          }));
+          setCourseBreakdownList(breakdown);
+          const total = approved.reduce((acc: number, g: any) => acc + Number(g.totalScore), 0);
+          const avg = Number((total / approved.length).toFixed(1));
+          setNumberOfCourses(approved.length);
+          setTotalScore(total);
+          setAverageScore(avg);
+          setOverallGrade(`${avg}%`);
+        } else {
+          setCourseBreakdownList([]);
+          setNumberOfCourses('');
+          setTotalScore('');
+          setAverageScore('');
+          setOverallGrade('');
+        }
+      } else {
+        setCourseBreakdownList([]);
+        setNumberOfCourses('');
+        setTotalScore('');
+        setAverageScore('');
+        setOverallGrade('');
+      }
+    } catch {
+      setCourseBreakdownList([]);
+      setNumberOfCourses('');
+      setTotalScore('');
+      setAverageScore('');
+      setOverallGrade('');
+    }
   }
 
   function toggleCourseSelection(courseId: string) {

@@ -951,13 +951,28 @@ export default function AdminStudentsPage() {
                 className="select text-xs w-full"
                 value={classId}
                 onChange={(e) => setClassId(e.target.value)}
+                required
               >
-                {classes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
+                {classes.length === 0 ? (
+                  <option value="" disabled>
+                    {lang === 'am' ? 'ምንም ክፍል አልተመዘገበም፤ እባክዎ መጀመሪያ ክፍል ይመዝግቡ' : 'No class found; please create a class first'}
                   </option>
-                ))}
+                ) : (
+                  classes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))
+                )}
               </select>
+              {classes.length === 0 && (
+                <Link
+                  href="/dashboard/education/classes"
+                  className="text-[11px] text-gold hover:underline mt-1 font-semibold inline-block"
+                >
+                  + {lang === 'am' ? 'አዲስ ክፍል ለመመዝገብ እዚህ ይጫኑ' : 'Click here to add a class'}
+                </Link>
+              )}
             </div>
           </div>
 

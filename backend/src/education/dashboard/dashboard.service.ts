@@ -42,9 +42,12 @@ export class EducationDashboardService {
         },
       }),
       this.prisma.classGroup.findMany({
+        where: { isActive: true },
         include: {
+          teachers: { select: { id: true, fullName: true } },
           _count: { select: { students: true } },
         },
+        orderBy: [{ orderIndex: 'asc' }, { name: 'asc' }],
       }),
     ]);
 
@@ -78,6 +81,8 @@ export class EducationDashboardService {
         id: cg.id,
         name: cg.name,
         level: cg.level,
+        roomNumber: cg.roomNumber,
+        teachers: cg.teachers,
         studentCount: cg._count.students,
       })),
     };

@@ -29,6 +29,7 @@ import {
   CheckSquare,
   Square,
   ChevronRight,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface Student {
@@ -40,6 +41,9 @@ interface Student {
   dateOfBirth?: string;
   age?: number;
   class: { id: string; name: string; level: string };
+  isSuspended?: boolean;
+  behaviorStatus?: string;
+  suspensionReason?: string | null;
 }
 
 interface CourseItem {
@@ -215,11 +219,12 @@ export default function CertificatesPage() {
       setLoading(true);
       const [certsRes, studentsRes, settingsRes] = await Promise.all([
         api.get<CertificateRecord[]>('/education/certificates'),
-        api.get<{ data: Student[] }>('/students?limit=100'),
+        api.get<any>('/students?pageSize=500'),
         api.get<SystemSetting>('/settings').catch(() => null),
       ]);
       setCertificates(certsRes || []);
-      setStudents(studentsRes.data || []);
+      const allStudents: Student[] = Array.isArray(studentsRes) ? studentsRes : studentsRes?.data || [];
+      setStudents(allStudents);
       if (settingsRes) {
         setSystemSettings(settingsRes);
         if (settingsRes.teachingAdminName) setSignatory2Name(settingsRes.teachingAdminName);
@@ -227,8 +232,8 @@ export default function CertificatesPage() {
         if (settingsRes.accentColorHex) setThemeColor(settingsRes.accentColorHex);
       }
 
-      if (studentsRes.data && studentsRes.data.length > 0) {
-        handleStudentSelect(studentsRes.data[0]);
+      if (allStudents.length > 0) {
+        handleStudentSelect(allStudents[0]);
       }
     } catch (err) {
       console.error('Failed to load certificates data:', err);
@@ -239,16 +244,22 @@ export default function CertificatesPage() {
 
   async function loadClassCoursesAndGrades() {
     try {
-      const [coursesRes, gradesRes] = await Promise.all([
+      const [coursesRes, gradesRes, studentsRes] = await Promise.all([
         api.get<CourseItem[]>(`/education/courses?classLevel=${batchClassLevel}`),
         api.get<any[]>(
           `/education/grades?classLevel=${batchClassLevel}&ethiopianYear=${batchYear}&semester=${batchSemester}`,
         ),
+        api.get<any>(`/students?classLevel=${batchClassLevel}&pageSize=500`),
       ]);
       setAvailableCourses(coursesRes || []);
       setBatchGrades(gradesRes || []);
+      const fetchedStudents: Student[] = Array.isArray(studentsRes) ? studentsRes : studentsRes?.data || [];
+      setStudents((prev) => {
+        const others = prev.filter((s) => s.class?.level !== batchClassLevel);
+        return [...others, ...fetchedStudents];
+      });
       // Auto-select all available courses for this class level
-      setSelectedCourseIds(coursesRes.map((c) => c.id));
+      setSelectedCourseIds((coursesRes || []).map((c) => c.id));
     } catch (err) {
       console.error('Failed to load class courses/grades:', err);
     }
@@ -301,6 +312,7 @@ export default function CertificatesPage() {
         sum,
         avg,
         courseScores,
+        isSuspended: s.isSuspended || s.behaviorStatus === 'SUSPENDED',
       };
     })
     // Sort descending by sum/avg to determine Rank
@@ -746,6 +758,19 @@ export default function CertificatesPage() {
               </div>
             </div>
 
+            {computedWithRanks.some((r) => r.isSuspended) && (
+              <div className="mx-4 mt-3 p-3 bg-red-50 border border-red-300 rounded-lg text-red-900 text-xs flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={16} className="text-red-600 shrink-0" />
+                  <span>
+                    {lang === 'am'
+                      ? 'ማስጠንቀቂያ፡ በዚህ ክፍል ውስጥ የታገደ ተማሪ አለ። እገዳው እስካልተነሳ ድረስ ሰርተፊኬት እንዳይዘጋጅላቸው ጥንቃቄ ያድርጉ።'
+                      : 'Warning: There are suspended students in this class. Refrain from issuing certificates until suspensions are lifted.'}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="table-base">
                 <thead>
@@ -775,17 +800,26 @@ export default function CertificatesPage() {
                     </tr>
                   ) : (
                     computedWithRanks.map((item) => (
-                      <tr key={item.student.id} className="hover:bg-amber-50/20">
+                      <tr key={item.student.id} className={`hover:bg-amber-50/20 ${item.isSuspended ? 'bg-red-50/30' : ''}`}>
                         <td className="font-mono text-xs text-slate">{item.student.studentCode}</td>
                         <td>
-                          <p className="font-semibold text-xs text-ink">
-                            {lang === 'am' && item.student.fullNameAmharic
-                              ? item.student.fullNameAmharic
-                              : item.student.fullName}
-                          </p>
-                          {lang === 'am' && item.student.fullNameAmharic && (
-                            <p className="text-[10px] text-slate">{item.student.fullName}</p>
-                          )}
+                          <div className="flex items-center gap-1.5">
+                            <div>
+                              <p className="font-semibold text-xs text-ink">
+                                {lang === 'am' && item.student.fullNameAmharic
+                                  ? item.student.fullNameAmharic
+                                  : item.student.fullName}
+                              </p>
+                              {lang === 'am' && item.student.fullNameAmharic && (
+                                <p className="text-[10px] text-slate">{item.student.fullName}</p>
+                              )}
+                            </div>
+                            {item.isSuspended && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 border border-red-300">
+                                ⚠️ {lang === 'am' ? 'የታገደ' : 'Suspended'}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="text-center text-xs text-slate whitespace-nowrap">
                           <span className="font-medium text-ink">
@@ -870,10 +904,23 @@ export default function CertificatesPage() {
               >
                 {students.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.studentCode} - {s.fullNameAmharic || s.fullName} ({s.class?.name})
+                    {s.isSuspended ? '⚠️ [የታገደ] ' : ''}{s.studentCode} - {s.fullNameAmharic || s.fullName} ({s.class?.name})
                   </option>
                 ))}
               </select>
+
+              {students.find((st) => st.id === selectedStudentId)?.isSuspended && (
+                <div className="p-3 bg-red-50 border-2 border-red-500 rounded-lg text-red-900 text-xs font-bold flex items-center gap-2">
+                  <AlertTriangle size={18} className="text-red-600 shrink-0" />
+                  <div>
+                    <p className="font-extrabold">{lang === 'am' ? '⚠️ ማስጠንቀቂያ፡ ይህ ተማሪ በአሁኑ ወቅት የታገደ ነው!' : '⚠️ Warning: This student is currently suspended!'}</p>
+                    <p className="font-normal text-[11px] mt-0.5">
+                      {lang === 'am' ? 'የእገዳ ምክንያት፡ ' : 'Reason: '}
+                      {students.find((st) => st.id === selectedStudentId)?.suspensionReason || (lang === 'am' ? 'የዲሲፕሊን ጥሰት' : 'Disciplinary violation')}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Custom Content & Fields */}

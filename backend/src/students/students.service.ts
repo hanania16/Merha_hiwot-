@@ -4,7 +4,13 @@ import { AuditService } from '../common/audit/audit.service';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { QueryStudentDto } from './dto/query-student.dto';
+import {
+  CreateBehaviorRecordDto,
+  ToggleSuspensionDto,
+  UpdateBehaviorStatusDto,
+} from './dto/behavior-student.dto';
 import { currentEthiopianYear } from '../common/constants/ethiopian-calendar';
+import { BehaviorRecordType, BehaviorStatus, StudentStatus } from '@prisma/client';
 
 function calculateAge(dob: Date): number {
   const now = new Date();
@@ -52,7 +58,12 @@ export class StudentsService {
 
     const updated = await this.prisma.student.update({
       where: { id },
-      data: { ...dto, dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined },
+      data: {
+        ...dto,
+        dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : undefined,
+        suspensionDate: dto.suspensionDate ? new Date(dto.suspensionDate) : undefined,
+        suspensionEndDate: dto.suspensionEndDate ? new Date(dto.suspensionEndDate) : undefined,
+      },
       include: { class: true },
     });
 
@@ -68,7 +79,7 @@ export class StudentsService {
   }
 
   /** Never deletes; toggling status is the only supported deactivation path. Manual override of the automatic inactivation. */
-  async setStatus(id: string, status: 'ACTIVE' | 'INACTIVE', userId: string) {
+  async setStatus(id: string, status: StudentStatus, userId: string) {
     return this.update(id, { status } as UpdateStudentDto, userId);
   }
 
@@ -77,8 +88,11 @@ export class StudentsService {
     if (!existing) throw new NotFoundException('Student not found');
 
     await this.prisma.$transaction([
+      this.prisma.studentBehaviorRecord.deleteMany({ where: { studentId: id } }),
       this.prisma.receipt.deleteMany({ where: { studentId: id } }),
       this.prisma.monthlyPayment.deleteMany({ where: { studentId: id } }),
+      this.prisma.studentGrade.deleteMany({ where: { studentId: id } }),
+      this.prisma.certificateRecord.deleteMany({ where: { studentId: id } }),
       this.prisma.student.delete({ where: { id } }),
     ]);
 
@@ -111,6 +125,12 @@ export class StudentsService {
         certificates: {
           orderBy: { createdAt: 'desc' },
         },
+        behaviorRecords: {
+          include: {
+            reportedBy: { select: { id: true, fullName: true } },
+          },
+          orderBy: { incidentDate: 'desc' },
+        },
       },
     });
     if (!student) throw new NotFoundException('Student not found');
@@ -139,12 +159,15 @@ export class StudentsService {
 
   async findAll(query: QueryStudentDto) {
     const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 25;
+    const pageSize = query.limit ?? query.pageSize ?? 50;
 
-    const where = {
+    const where: any = {
       classId: query.classId,
+      class: query.classLevel ? { level: query.classLevel } : undefined,
       gender: query.gender,
       status: query.status,
+      behaviorStatus: query.behaviorStatus,
+      isSuspended: query.isSuspended !== undefined ? query.isSuspended : undefined,
       OR: query.search
         ? [
             { fullName: { contains: query.search, mode: 'insensitive' as const } },
@@ -175,10 +198,16 @@ export class StudentsService {
               course: { select: { nameAmharic: true, code: true } },
             },
           },
+          behaviorRecords: {
+            take: 3,
+            orderBy: { incidentDate: 'desc' },
+            include: { reportedBy: { select: { id: true, fullName: true } } },
+          },
           _count: {
             select: {
               grades: true,
               certificates: true,
+              behaviorRecords: true,
             },
           },
         },
@@ -217,5 +246,156 @@ export class StudentsService {
 
   findClasses() {
     return this.prisma.classGroup.findMany({ include: { teachers: true } });
+  }
+
+  // --------------------------------------------------------------------------
+  // BEHAVIOR & DISCIPLINE MANAGEMENT
+  // --------------------------------------------------------------------------
+
+  async getBehaviorRecords(studentId: string) {
+    const student = await this.prisma.student.findUnique({ where: { id: studentId } });
+    if (!student) throw new NotFoundException('Student not found');
+
+    return this.prisma.studentBehaviorRecord.findMany({
+      where: { studentId },
+      include: {
+        reportedBy: { select: { id: true, fullName: true, role: true } },
+      },
+      orderBy: { incidentDate: 'desc' },
+    });
+  }
+
+  async addBehaviorRecord(studentId: string, dto: CreateBehaviorRecordDto, userId: string) {
+    const student = await this.prisma.student.findUnique({ where: { id: studentId } });
+    if (!student) throw new NotFoundException('Student not found');
+
+    const record = await this.prisma.studentBehaviorRecord.create({
+      data: {
+        studentId,
+        type: dto.type,
+        title: dto.title,
+        description: dto.description,
+        actionTaken: dto.actionTaken,
+        incidentDate: dto.incidentDate ? new Date(dto.incidentDate) : new Date(),
+        ethiopianYear: dto.ethiopianYear || currentEthiopianYear(),
+        reportedById: userId,
+      },
+      include: {
+        reportedBy: { select: { id: true, fullName: true, role: true } },
+      },
+    });
+
+    // Auto update behavior status or suspension flags if applicable
+    let behaviorStatusUpdate: BehaviorStatus | undefined;
+    let isSuspendedUpdate: boolean | undefined;
+    let suspensionReasonUpdate: string | null | undefined;
+
+    if (dto.type === BehaviorRecordType.SUSPENSION) {
+      behaviorStatusUpdate = BehaviorStatus.SUSPENDED;
+      isSuspendedUpdate = true;
+      suspensionReasonUpdate = dto.description;
+    } else if (dto.type === BehaviorRecordType.WARNING && student.behaviorStatus !== BehaviorStatus.SUSPENDED) {
+      behaviorStatusUpdate = BehaviorStatus.WARNING;
+    } else if (dto.type === BehaviorRecordType.COMMENDATION && student.behaviorStatus !== BehaviorStatus.SUSPENDED) {
+      behaviorStatusUpdate = BehaviorStatus.EXCELLENT;
+    }
+
+    if (behaviorStatusUpdate || isSuspendedUpdate !== undefined) {
+      await this.prisma.student.update({
+        where: { id: studentId },
+        data: {
+          behaviorStatus: behaviorStatusUpdate,
+          isSuspended: isSuspendedUpdate,
+          status: isSuspendedUpdate ? StudentStatus.SUSPENDED : undefined,
+          suspensionReason: suspensionReasonUpdate,
+          suspensionDate: isSuspendedUpdate ? new Date() : undefined,
+        },
+      });
+    }
+
+    await this.audit.log({
+      userId,
+      action: 'STUDENT_BEHAVIOR_LOGGED',
+      entityType: 'StudentBehaviorRecord',
+      entityId: record.id,
+      newValue: record,
+    });
+
+    return record;
+  }
+
+  async toggleSuspension(studentId: string, dto: ToggleSuspensionDto, userId: string) {
+    const student = await this.prisma.student.findUnique({ where: { id: studentId } });
+    if (!student) throw new NotFoundException('Student not found');
+
+    const isSuspended = dto.isSuspended;
+    const now = new Date();
+
+    const updated = await this.prisma.student.update({
+      where: { id: studentId },
+      data: {
+        isSuspended,
+        status: isSuspended ? StudentStatus.SUSPENDED : StudentStatus.ACTIVE,
+        behaviorStatus: isSuspended ? BehaviorStatus.SUSPENDED : BehaviorStatus.GOOD,
+        suspensionReason: isSuspended ? dto.suspensionReason || 'የዲሲፕሊን እገዳ' : null,
+        suspensionDate: isSuspended ? now : null,
+        suspensionEndDate: isSuspended && dto.suspensionEndDate ? new Date(dto.suspensionEndDate) : null,
+      },
+      include: { class: true },
+    });
+
+    // Log a behavior record for the action
+    await this.prisma.studentBehaviorRecord.create({
+      data: {
+        studentId,
+        type: isSuspended ? BehaviorRecordType.SUSPENSION : BehaviorRecordType.GENERAL_NOTE,
+        title: isSuspended ? 'የተማሪ እገዳ ተጥሏል (Suspension Issued)' : 'የተማሪ እገዳ ተነስቷል (Suspension Lifted)',
+        description: isSuspended
+          ? dto.suspensionReason || 'ተማሪው ከሰንበት ት/ቤት በዲሲፕሊን ምክንያት ታግዷል።'
+          : 'ተማሪው የነበረበት እገዳ ተነስቶ ወደ መደበኛ ትምህርት ተመልሷል።',
+        actionTaken: isSuspended ? 'እገዳ ተጥሏል' : 'እገዳ ተነስቷል',
+        incidentDate: now,
+        reportedById: userId,
+        ethiopianYear: currentEthiopianYear(),
+      },
+    });
+
+    await this.audit.log({
+      userId,
+      action: isSuspended ? 'STUDENT_SUSPENDED' : 'STUDENT_UNSUSPENDED',
+      entityType: 'Student',
+      entityId: studentId,
+      oldValue: { isSuspended: student.isSuspended, status: student.status },
+      newValue: { isSuspended, status: updated.status },
+    });
+
+    return { ...updated, age: calculateAge(updated.dateOfBirth) };
+  }
+
+  async updateBehaviorStatus(studentId: string, dto: UpdateBehaviorStatusDto, userId: string) {
+    const student = await this.prisma.student.findUnique({ where: { id: studentId } });
+    if (!student) throw new NotFoundException('Student not found');
+
+    const isSuspended = dto.behaviorStatus === BehaviorStatus.SUSPENDED;
+
+    const updated = await this.prisma.student.update({
+      where: { id: studentId },
+      data: {
+        behaviorStatus: dto.behaviorStatus,
+        isSuspended,
+        status: isSuspended ? StudentStatus.SUSPENDED : student.status === StudentStatus.SUSPENDED ? StudentStatus.ACTIVE : student.status,
+      },
+      include: { class: true },
+    });
+
+    await this.audit.log({
+      userId,
+      action: 'STUDENT_BEHAVIOR_STATUS_UPDATED',
+      entityType: 'Student',
+      entityId: studentId,
+      newValue: dto.behaviorStatus,
+    });
+
+    return { ...updated, age: calculateAge(updated.dateOfBirth) };
   }
 }

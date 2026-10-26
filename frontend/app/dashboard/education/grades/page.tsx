@@ -23,6 +23,7 @@ import {
   Check,
   Calendar,
   Layers,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface Course {
@@ -48,6 +49,9 @@ interface Student {
   age?: number;
   classId: string;
   class: { id: string; name: string; level: string };
+  isSuspended?: boolean;
+  behaviorStatus?: string;
+  suspensionReason?: string | null;
 }
 
 interface GradeRow {
@@ -58,6 +62,9 @@ interface GradeRow {
   gender: string;
   age?: number | null;
   gradeId?: string;
+  isSuspended?: boolean;
+  behaviorStatus?: string;
+  suspensionReason?: string | null;
   assessmentScore: number | '';
   midExamScore: number | '';
   finalExamScore: number | '';
@@ -179,27 +186,26 @@ export default function GradesSubmissionPage() {
       setLoading(true);
       setMessage(null);
 
-      // 1. Fetch students in this class level
-      const studentsRes = await api.get<{ data: Student[] }>(`/students?limit=100`);
-      const studentsInClass = (studentsRes.data || []).filter(
-        (s) => s.class?.level === classLevel,
-      );
+      // 1. Fetch students in this class level directly from backend
+      const studentsRes = await api.get<any>(`/students?classLevel=${classLevel}&pageSize=500`);
+      const studentsInClass: Student[] = Array.isArray(studentsRes) ? studentsRes : studentsRes?.data || [];
 
       // 2. Fetch existing grades for course, year, and semester
       const gradesRes = await api.get<any[]>(
         `/education/grades?courseId=${selectedCourseId}&ethiopianYear=${ethiopianYear}&semester=${semester}`,
       );
       const gradeMap = new Map<string, any>();
-      gradesRes.forEach((g) => gradeMap.set(g.studentId, g));
+      (gradesRes || []).forEach((g) => gradeMap.set(g.studentId, g));
 
       // Check if there is an existing teacher signature on the roster
-      const existingSig = gradesRes.find((g) => g.teacherSignature)?.teacherSignature || null;
+      const existingSig = (gradesRes || []).find((g) => g.teacherSignature)?.teacherSignature || null;
       setRosterSignature(existingSig);
 
       // 3. Build unified rows
       const rows: GradeRow[] = studentsInClass.map((s) => {
         const existing = gradeMap.get(s.id);
         const age = s.age ?? calculateAge(s.dateOfBirth);
+        const isSuspended = s.isSuspended || s.behaviorStatus === 'SUSPENDED';
         if (existing) {
           return {
             studentId: s.id,
@@ -208,6 +214,9 @@ export default function GradesSubmissionPage() {
             fullNameAmharic: s.fullNameAmharic,
             gender: s.gender,
             age,
+            isSuspended,
+            behaviorStatus: s.behaviorStatus,
+            suspensionReason: s.suspensionReason,
             gradeId: existing.id,
             assessmentScore: existing.assessmentScore !== null ? Number(existing.assessmentScore) : '',
             midExamScore: existing.midExamScore !== null ? Number(existing.midExamScore) : '',
@@ -228,6 +237,9 @@ export default function GradesSubmissionPage() {
             fullNameAmharic: s.fullNameAmharic,
             gender: s.gender,
             age,
+            isSuspended,
+            behaviorStatus: s.behaviorStatus,
+            suspensionReason: s.suspensionReason,
             assessmentScore: '',
             midExamScore: '',
             finalExamScore: '',
@@ -592,6 +604,17 @@ export default function GradesSubmissionPage() {
           </div>
         </div>
 
+        {filteredRows.some((r) => r.isSuspended) && (
+          <div className="p-3 mx-4 my-2 bg-red-50 border border-red-300 rounded-lg text-red-900 text-xs flex items-center gap-2">
+            <AlertTriangle size={16} className="text-red-600 shrink-0" />
+            <span>
+              {lang === 'am'
+                ? 'ማስጠንቀቂያ፡ በዚህ ክፍል ውስጥ የታገደ ተማሪ አለ። የዲሲፕሊን ክትትል እያደረጉ ውጤት ይመዝግቡ።'
+                : 'Warning: There are suspended students in this class roster.'}
+            </span>
+          </div>
+        )}
+
         {loading ? (
           <div className="p-8 text-center text-xs text-slate">{t('loading')}</div>
         ) : filteredRows.length === 0 ? (
@@ -622,15 +645,24 @@ export default function GradesSubmissionPage() {
                 {filteredRows.map((row, idx) => {
                   const originalIdx = gradeRows.findIndex((r) => r.studentId === row.studentId);
                   return (
-                    <tr key={row.studentId} className="hover:bg-amber-50/20">
+                    <tr key={row.studentId} className={`hover:bg-amber-50/20 ${row.isSuspended ? 'bg-red-50/20' : ''}`}>
                       <td className="font-mono text-xs text-slate">{row.studentCode}</td>
                       <td>
-                        <p className="font-semibold text-xs text-ink">
-                          {lang === 'am' && row.fullNameAmharic ? row.fullNameAmharic : row.fullName}
-                        </p>
-                        {lang === 'am' && row.fullNameAmharic && (
-                          <p className="text-[10px] text-slate">{row.fullName}</p>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          <div>
+                            <p className="font-semibold text-xs text-ink">
+                              {lang === 'am' && row.fullNameAmharic ? row.fullNameAmharic : row.fullName}
+                            </p>
+                            {lang === 'am' && row.fullNameAmharic && (
+                              <p className="text-[10px] text-slate">{row.fullName}</p>
+                            )}
+                          </div>
+                          {row.isSuspended && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 border border-red-300">
+                              ⚠️ {lang === 'am' ? 'የታገደ' : 'Suspended'}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="text-center text-xs text-slate whitespace-nowrap">
                         <span className="font-medium text-ink">

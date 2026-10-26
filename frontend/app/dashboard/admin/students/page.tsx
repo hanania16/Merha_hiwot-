@@ -26,6 +26,11 @@ import {
   Trash2,
   FileCheck,
   Check,
+  AlertTriangle,
+  ShieldAlert,
+  HeartHandshake,
+  FileText,
+  Clock,
 } from 'lucide-react';
 
 interface ClassGroup {
@@ -40,6 +45,17 @@ interface StudentGradeSummary {
   letterGrade: string;
   status: 'DRAFT' | 'SUBMITTED' | 'APPROVED';
   course: { nameAmharic: string; code: string };
+}
+
+interface BehaviorRecord {
+  id: string;
+  type: 'COMMENDATION' | 'WARNING' | 'INFRACTION' | 'SUSPENSION' | 'GENERAL_NOTE';
+  title: string;
+  description: string;
+  actionTaken?: string | null;
+  incidentDate: string;
+  ethiopianYear: number;
+  reportedBy?: { id: string; fullName: string; role?: string };
 }
 
 interface Student {
@@ -57,12 +73,18 @@ interface Student {
   registrationDate: string;
   classId: string;
   class: ClassGroup;
-  status: 'ACTIVE' | 'INACTIVE';
+  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+  behaviorStatus?: 'EXCELLENT' | 'GOOD' | 'WARNING' | 'SUSPENDED';
+  isSuspended?: boolean;
+  suspensionReason?: string | null;
+  suspensionDate?: string | null;
+  suspensionEndDate?: string | null;
   photoUrl: string | null;
   isWorkingMember: boolean;
   monthlySalary?: number | null;
   grades?: StudentGradeSummary[];
-  _count?: { grades: number; certificates: number };
+  behaviorRecords?: BehaviorRecord[];
+  _count?: { grades: number; certificates: number; behaviorRecords?: number };
 }
 
 interface DetailedStudentGrade {
@@ -143,8 +165,24 @@ export default function AdminStudentsPage() {
   // Profile Detail & Grades Modal State
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [activeStudentDetail, setActiveStudentDetail] = useState<DetailedStudent | null>(null);
-  const [detailTab, setDetailTab] = useState<'grades' | 'info' | 'certificates'>('grades');
+  const [detailTab, setDetailTab] = useState<'grades' | 'info' | 'certificates' | 'behavior'>('grades');
   const [loadingDetail, setLoadingDetail] = useState(false);
+
+  // Suspension Modal State
+  const [suspendModalOpen, setSuspendModalOpen] = useState(false);
+  const [suspensionReason, setSuspensionReason] = useState('');
+  const [suspending, setSuspending] = useState(false);
+
+  // Behavior Record Modal State
+  const [behaviorModalOpen, setBehaviorModalOpen] = useState(false);
+  const [behaviorType, setBehaviorType] = useState<BehaviorRecord['type']>('COMMENDATION');
+  const [behaviorTitle, setBehaviorTitle] = useState('');
+  const [behaviorDescription, setBehaviorDescription] = useState('');
+  const [behaviorActionTaken, setBehaviorActionTaken] = useState('');
+  const [savingBehavior, setSavingBehavior] = useState(false);
+
+  // Behavior filter
+  const [behaviorFilter, setBehaviorFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED' | 'WARNING'>('ALL');
 
   // Add Grade inside Student Modal State
   const [gradeModalOpen, setGradeModalOpen] = useState(false);
@@ -174,11 +212,12 @@ export default function AdminStudentsPage() {
     setLoading(true);
     try {
       const [studentsRes, classesRes, coursesRes] = await Promise.all([
-        api.get<{ data: Student[] }>('/students?pageSize=100'),
+        api.get<any>('/students?pageSize=500'),
         api.get<ClassGroup[]>('/students/classes'),
         api.get<CourseOption[]>('/education/courses'),
       ]);
-      setStudents(studentsRes.data || []);
+      const list = Array.isArray(studentsRes) ? studentsRes : studentsRes?.data || [];
+      setStudents(list);
       setClasses(classesRes || []);
       setCourses(coursesRes || []);
       if (classesRes && classesRes.length > 0 && !classId) {
@@ -329,9 +368,87 @@ export default function AdminStudentsPage() {
     }
   }
 
+  async function handleLiftSuspension(studentId: string) {
+    if (!confirm(lang === 'am' ? 'የተማሪውን እገዳ ማንሳት ይፈልጋሉ?' : 'Are you sure you want to lift this suspension?')) return;
+    setSuspending(true);
+    try {
+      await api.post(`/students/${studentId}/suspension`, { isSuspended: false });
+      const refreshed = await api.get<DetailedStudent>(`/students/${studentId}`);
+      setActiveStudentDetail(refreshed);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to lift suspension:', err);
+    } finally {
+      setSuspending(false);
+    }
+  }
+
+  async function handleConfirmSuspension(e: React.FormEvent) {
+    e.preventDefault();
+    if (!activeStudentDetail || !suspensionReason.trim()) return;
+    setSuspending(true);
+    try {
+      await api.post(`/students/${activeStudentDetail.id}/suspension`, {
+        isSuspended: true,
+        suspensionReason: suspensionReason.trim(),
+      });
+      const refreshed = await api.get<DetailedStudent>(`/students/${activeStudentDetail.id}`);
+      setActiveStudentDetail(refreshed);
+      setSuspendModalOpen(false);
+      setSuspensionReason('');
+      await loadData();
+    } catch (err) {
+      console.error('Failed to suspend student:', err);
+      alert(lang === 'am' ? 'ተማሪውን ማገድ አልተቻለም' : 'Failed to suspend student');
+    } finally {
+      setSuspending(false);
+    }
+  }
+
+  async function handleSaveBehaviorRecord(e: React.FormEvent) {
+    e.preventDefault();
+    if (!activeStudentDetail || !behaviorTitle.trim() || !behaviorDescription.trim()) return;
+    setSavingBehavior(true);
+    try {
+      await api.post(`/students/${activeStudentDetail.id}/behavior`, {
+        type: behaviorType,
+        title: behaviorTitle.trim(),
+        description: behaviorDescription.trim(),
+        actionTaken: behaviorActionTaken.trim() || undefined,
+      });
+      const refreshed = await api.get<DetailedStudent>(`/students/${activeStudentDetail.id}`);
+      setActiveStudentDetail(refreshed);
+      setBehaviorModalOpen(false);
+      setBehaviorTitle('');
+      setBehaviorDescription('');
+      setBehaviorActionTaken('');
+      await loadData();
+    } catch (err) {
+      console.error('Failed to record behavior:', err);
+      alert(lang === 'am' ? 'የስነ-ምግባር መዝገብ ማስቀመጥ አልተቻለም' : 'Failed to save behavior record');
+    } finally {
+      setSavingBehavior(false);
+    }
+  }
+
+  async function handleUpdateBehaviorStatus(newStatus: 'EXCELLENT' | 'GOOD' | 'WARNING' | 'SUSPENDED') {
+    if (!activeStudentDetail) return;
+    try {
+      await api.patch(`/students/${activeStudentDetail.id}/behavior-status`, { behaviorStatus: newStatus });
+      const refreshed = await api.get<DetailedStudent>(`/students/${activeStudentDetail.id}`);
+      setActiveStudentDetail(refreshed);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to update behavior status:', err);
+    }
+  }
+
   const filteredStudents = students.filter((s) => {
     if (selectedClassId !== 'ALL' && s.classId !== selectedClassId) return false;
     if (statusFilter !== 'ALL' && s.status !== statusFilter) return false;
+    if (behaviorFilter === 'SUSPENDED' && !s.isSuspended && s.status !== 'SUSPENDED' && s.behaviorStatus !== 'SUSPENDED') return false;
+    if (behaviorFilter === 'WARNING' && s.behaviorStatus !== 'WARNING') return false;
+    if (behaviorFilter === 'ACTIVE' && (s.isSuspended || s.status === 'INACTIVE' || s.status === 'SUSPENDED')) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
       return (
@@ -425,6 +542,43 @@ export default function AdminStudentsPage() {
               </button>
             );
           })}
+
+          {/* Behavior Filter Chips */}
+          <div className="flex items-center gap-1 pl-2 border-l border-gray-200">
+            <button
+              onClick={() => setBehaviorFilter('ALL')}
+              className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors ${
+                behaviorFilter === 'ALL' ? 'bg-ink text-white' : 'bg-mist text-slate hover:bg-mist/70'
+              }`}
+            >
+              {lang === 'am' ? 'ሁሉ' : 'All'}
+            </button>
+            <button
+              onClick={() => setBehaviorFilter('ACTIVE')}
+              className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors ${
+                behaviorFilter === 'ACTIVE' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+              }`}
+            >
+              {lang === 'am' ? 'ንቁ' : 'Active'}
+            </button>
+            <button
+              onClick={() => setBehaviorFilter('SUSPENDED')}
+              className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors flex items-center gap-1 ${
+                behaviorFilter === 'SUSPENDED' ? 'bg-red-700 text-white' : 'bg-red-50 text-red-800 hover:bg-red-100 border border-red-200'
+              }`}
+            >
+              <span>⚠️</span>
+              {lang === 'am' ? 'የታገዱ' : 'Suspended'}
+            </button>
+            <button
+              onClick={() => setBehaviorFilter('WARNING')}
+              className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors ${
+                behaviorFilter === 'WARNING' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+              }`}
+            >
+              {lang === 'am' ? 'ማስጠንቀቂያ' : 'Warnings'}
+            </button>
+          </div>
         </div>
 
         <div className="relative w-full md:w-80">
@@ -464,13 +618,28 @@ export default function AdminStudentsPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredStudents.map((s) => (
-                  <tr key={s.id} className="hover:bg-amber-50/20 transition-colors">
+                  <tr key={s.id} className={`hover:bg-amber-50/20 transition-colors ${s.isSuspended || s.status === 'SUSPENDED' ? 'bg-red-50/30' : ''}`}>
                     <td className="font-mono text-xs font-bold text-gold">{s.studentCode}</td>
                     <td>
                       <div>
-                        <p className="font-semibold text-ink text-sm">
-                          {lang === 'am' && s.fullNameAmharic ? s.fullNameAmharic : s.fullName}
-                        </p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-semibold text-ink text-sm">
+                            {lang === 'am' && s.fullNameAmharic ? s.fullNameAmharic : s.fullName}
+                          </p>
+                          {(s.isSuspended || s.status === 'SUSPENDED') && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 border border-red-300">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse"></span>
+                              ⚠️ {lang === 'am' ? 'የታገደ' : 'Suspended'}
+                            </span>
+                          )}
+                          {s.behaviorStatus && s.behaviorStatus !== 'GOOD' && !s.isSuspended && s.status !== 'SUSPENDED' && (
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              s.behaviorStatus === 'EXCELLENT' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'
+                            }`}>
+                              {s.behaviorStatus === 'EXCELLENT' ? (lang === 'am' ? 'የላቀ' : 'Excellent') : (lang === 'am' ? 'ማስጠንቀቂያ' : 'Warning')}
+                            </span>
+                          )}
+                        </div>
                         {s.fullNameAmharic && (
                           <p className="text-[11px] text-slate">{s.fullName}</p>
                         )}
@@ -771,11 +940,73 @@ export default function AdminStudentsPage() {
               </div>
             </div>
 
+            {/* Suspension Alert & Status Banner */}
+            {activeStudentDetail.isSuspended || activeStudentDetail.status === 'SUSPENDED' ? (
+              <div className="p-4 bg-red-50 border-2 border-red-500 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-red-950 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0 font-bold text-xl">
+                    ⚠️
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-extrabold text-sm text-red-900">
+                        {lang === 'am' ? 'ማስጠንቀቂያ፡ ይህ ተማሪ በአሁኑ ወቅት ከሰንበት ት/ቤት የታገደ ነው!' : 'Warning: This Student is Currently Suspended!'}
+                      </p>
+                      <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold">
+                        {lang === 'am' ? 'የታገደ' : 'SUSPENDED'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-red-800 mt-1">
+                      <span className="font-bold">{lang === 'am' ? 'የእገዳ ምክንያት፡ ' : 'Reason: '}</span>
+                      <span>{activeStudentDetail.suspensionReason || (lang === 'am' ? 'የዲሲፕሊን ጥሰት' : 'Disciplinary violation')}</span>
+                    </p>
+                    {activeStudentDetail.suspensionDate && (
+                      <p className="text-[10px] text-red-700 mt-0.5 font-mono">
+                        {lang === 'am' ? 'የታገደበት ቀን፡ ' : 'Suspended Date: '}
+                        {new Date(activeStudentDetail.suspensionDate).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleLiftSuspension(activeStudentDetail.id)}
+                  disabled={suspending}
+                  className="btn-gold bg-green-700 hover:bg-green-800 text-white font-bold text-xs py-2 px-3.5 shadow-sm whitespace-nowrap self-end sm:self-center"
+                >
+                  {suspending ? t('saving') : lang === 'am' ? 'እገዳ አንሳ (Lift Suspension)' : 'Lift Suspension'}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between p-3 bg-amber-50/50 rounded-lg border border-amber-200/60 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate font-medium">{lang === 'am' ? 'የስነ-ምግባር ደረጃ፡' : 'Conduct Status:'}</span>
+                  <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                    activeStudentDetail.behaviorStatus === 'EXCELLENT' ? 'bg-emerald-100 text-emerald-800' :
+                    activeStudentDetail.behaviorStatus === 'WARNING' ? 'bg-amber-100 text-amber-800' :
+                    'bg-blue-100 text-blue-800'
+                  }`}>
+                    {activeStudentDetail.behaviorStatus === 'EXCELLENT' ? (lang === 'am' ? 'የላቀ (Excellent)' : 'Excellent') :
+                     activeStudentDetail.behaviorStatus === 'WARNING' ? (lang === 'am' ? 'ማስጠንቀቂያ (Warning)' : 'Warning') :
+                     (lang === 'am' ? 'ጥሩ (Good)' : 'Good')}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSuspendModalOpen(true)}
+                  className="text-xs text-rose-600 hover:text-rose-800 font-bold hover:underline flex items-center gap-1"
+                >
+                  <AlertTriangle size={13} />
+                  {lang === 'am' ? 'ተማሪ እገድ (Suspend)' : 'Suspend Student'}
+                </button>
+              </div>
+            )}
+
             {/* Modal Tabs */}
-            <div className="flex border-b border-gray-100 gap-4 text-xs font-semibold">
+            <div className="flex border-b border-gray-100 gap-4 text-xs font-semibold overflow-x-auto">
               <button
                 onClick={() => setDetailTab('grades')}
-                className={`pb-2 border-b-2 flex items-center gap-1.5 transition-colors ${
+                className={`pb-2 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
                   detailTab === 'grades' ? 'border-gold text-gold font-bold' : 'border-transparent text-slate'
                 }`}
               >
@@ -784,7 +1015,7 @@ export default function AdminStudentsPage() {
               </button>
               <button
                 onClick={() => setDetailTab('info')}
-                className={`pb-2 border-b-2 flex items-center gap-1.5 transition-colors ${
+                className={`pb-2 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
                   detailTab === 'info' ? 'border-gold text-gold font-bold' : 'border-transparent text-slate'
                 }`}
               >
@@ -793,12 +1024,24 @@ export default function AdminStudentsPage() {
               </button>
               <button
                 onClick={() => setDetailTab('certificates')}
-                className={`pb-2 border-b-2 flex items-center gap-1.5 transition-colors ${
+                className={`pb-2 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
                   detailTab === 'certificates' ? 'border-gold text-gold font-bold' : 'border-transparent text-slate'
                 }`}
               >
                 <Scroll size={14} />
                 {lang === 'am' ? 'ምስክር ወረቀቶች' : 'Certificates'} ({activeStudentDetail.certificates?.length || 0})
+              </button>
+              <button
+                onClick={() => setDetailTab('behavior')}
+                className={`pb-2 border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+                  detailTab === 'behavior' ? 'border-gold text-gold font-bold' : 'border-transparent text-slate'
+                }`}
+              >
+                <ShieldAlert size={14} className={activeStudentDetail.isSuspended ? 'text-red-600' : 'text-gold'} />
+                {lang === 'am' ? 'ሥነ-ምግባርና ዲሲፕሊን' : 'Behavior & Conduct'} ({activeStudentDetail.behaviorRecords?.length || 0})
+                {activeStudentDetail.isSuspended && (
+                  <span className="w-2 h-2 rounded-full bg-red-600 animate-ping"></span>
+                )}
               </button>
             </div>
 
@@ -947,6 +1190,139 @@ export default function AdminStudentsPage() {
               </div>
             )}
 
+            {/* Tab 4: Behavior & Conduct Records */}
+            {detailTab === 'behavior' && (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 bg-mist/30 rounded-lg border border-gray-200">
+                  <div>
+                    <h4 className="text-xs font-bold text-ink">
+                      {lang === 'am' ? 'የተማሪው የሥነ-ምግባር አጠቃላይ ሁኔታ' : 'Student Conduct Status'}
+                    </h4>
+                    <p className="text-[11px] text-slate mt-0.5">
+                      {lang === 'am' ? 'የክርስቲያናዊ ሥነ-ምግባር፣ ክትትልና ዲሲፕሊን ማስተካከያ' : 'Track Christian conduct, commendations, warnings, and suspension'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBehaviorModalOpen(true)}
+                      className="btn-gold text-xs py-1 px-3 font-semibold flex items-center gap-1.5"
+                    >
+                      <Plus size={13} />
+                      {lang === 'am' ? 'መዝገብ አስገባ' : 'Log Incident'}
+                    </button>
+                    {!activeStudentDetail.isSuspended && (
+                      <button
+                        type="button"
+                        onClick={() => setSuspendModalOpen(true)}
+                        className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-xs font-bold transition-all flex items-center gap-1"
+                      >
+                        <AlertTriangle size={12} />
+                        {lang === 'am' ? 'እገድ' : 'Suspend'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Status Switcher */}
+                <div className="p-3 bg-white rounded-lg border border-gray-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="font-semibold text-ink">{lang === 'am' ? 'ደረጃ አሻሽል / ለውጥ፡' : 'Update Status:'}</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[
+                      { id: 'EXCELLENT', labelAm: 'የላቀ (Excellent)', color: 'border-emerald-500 text-emerald-800 bg-emerald-50' },
+                      { id: 'GOOD', labelAm: 'ጥሩ (Good)', color: 'border-blue-500 text-blue-800 bg-blue-50' },
+                      { id: 'WARNING', labelAm: 'ማስጠንቀቂያ (Warning)', color: 'border-amber-500 text-amber-800 bg-amber-50' },
+                      { id: 'SUSPENDED', labelAm: 'የታገደ (Suspended)', color: 'border-red-500 text-red-800 bg-red-50' },
+                    ].map((st) => (
+                      <button
+                        key={st.id}
+                        type="button"
+                        onClick={() => handleUpdateBehaviorStatus(st.id as any)}
+                        className={`px-2.5 py-1 rounded text-[11px] font-bold border transition-all ${
+                          activeStudentDetail.behaviorStatus === st.id
+                            ? `${st.color} ring-2 ring-offset-1 ring-gold`
+                            : 'border-gray-200 text-slate hover:bg-gray-50'
+                        }`}
+                      >
+                        {st.labelAm}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Behavior Timeline */}
+                <div className="space-y-2">
+                  <h5 className="font-bold text-xs text-ink flex items-center gap-1.5">
+                    <Clock size={13} className="text-gold" />
+                    <span>{lang === 'am' ? 'የሥነ-ምግባር ክትትል ታሪክ' : 'Conduct & Disciplinary History'}</span>
+                  </h5>
+
+                  {activeStudentDetail.behaviorRecords && activeStudentDetail.behaviorRecords.length > 0 ? (
+                    <div className="space-y-2">
+                      {activeStudentDetail.behaviorRecords.map((rec) => (
+                        <div
+                          key={rec.id}
+                          className={`p-3 rounded-lg border text-xs space-y-1.5 ${
+                            rec.type === 'SUSPENSION'
+                              ? 'bg-red-50/60 border-red-300'
+                              : rec.type === 'WARNING'
+                              ? 'bg-amber-50/60 border-amber-300'
+                              : rec.type === 'COMMENDATION'
+                              ? 'bg-emerald-50/60 border-emerald-300'
+                              : 'bg-mist/30 border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  rec.type === 'SUSPENSION'
+                                    ? 'bg-red-600 text-white'
+                                    : rec.type === 'WARNING'
+                                    ? 'bg-amber-500 text-white'
+                                    : rec.type === 'COMMENDATION'
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-gray-200 text-slate'
+                                }`}
+                              >
+                                {rec.type === 'SUSPENSION'
+                                  ? 'እገዳ'
+                                  : rec.type === 'WARNING'
+                                  ? 'ማስጠንቀቂያ'
+                                  : rec.type === 'COMMENDATION'
+                                  ? 'ምስጋና'
+                                  : 'ማስታወሻ'}
+                              </span>
+                              <span className="font-bold text-ink">{rec.title}</span>
+                            </div>
+                            <span className="text-[10px] text-slate font-mono">
+                              {new Date(rec.incidentDate).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <p className="text-slate text-[11px]">{rec.description}</p>
+                          {rec.actionTaken && (
+                            <p className="text-[11px] font-medium text-ink">
+                              <span className="text-slate font-normal">{lang === 'am' ? 'የተወሰደ እርምጃ፡ ' : 'Action Taken: '}</span>
+                              {rec.actionTaken}
+                            </p>
+                          )}
+                          {rec.reportedBy && (
+                            <p className="text-[10px] text-slate/70 pt-1 border-t border-gray-100 font-mono">
+                              {lang === 'am' ? 'የመዘገበው፡ ' : 'Logged by: '} {rec.reportedBy.fullName}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-6 text-center text-xs text-slate border border-dashed rounded-lg">
+                      {lang === 'am' ? 'የተመዘገበ የዲሲፕሊን ወይም የምስጋና መዝገብ የለም' : 'No behavior or disciplinary records logged yet'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-end pt-3 border-t border-gray-100">
               <button onClick={() => setDetailModalOpen(false)} className="btn-primary text-xs">
                 {t('close')}
@@ -1087,6 +1463,129 @@ export default function AdminStudentsPage() {
               className="btn-gold text-xs font-semibold"
             >
               {savingGrade ? t('saving') : lang === 'am' ? 'ውጤት መዝግብ' : 'Save Marks'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Suspend Student Modal */}
+      <Modal
+        open={suspendModalOpen}
+        title={
+          lang === 'am'
+            ? `ተማሪ እገድ: ${activeStudentDetail?.fullNameAmharic || activeStudentDetail?.fullName}`
+            : `Suspend Student: ${activeStudentDetail?.fullName}`
+        }
+        onClose={() => setSuspendModalOpen(false)}
+      >
+        <form onSubmit={handleConfirmSuspension} className="space-y-4 text-xs">
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-900 flex items-center gap-2">
+            <AlertTriangle size={18} className="text-red-600 shrink-0" />
+            <span>
+              {lang === 'am'
+                ? 'ተማሪውን ማገድ ውጤት እንዳይገባላቸው ወይም ሰርተፊኬት እንዳይዘጋጅላቸው በሲስተሙ ውስጥ ያሳውቃል። እገዳውን በማንኛውም ጊዜ ማንሳት ይችላሉ።'
+                : 'Suspending a student flags them across grade entry and certificate issuance. You can lift the suspension at any time.'}
+            </span>
+          </div>
+
+          <div>
+            <label className="label">{lang === 'am' ? 'የእገዳ ምክንያት (Reason for Suspension)' : 'Reason'} *</label>
+            <textarea
+              required
+              rows={3}
+              className="input w-full"
+              placeholder={lang === 'am' ? 'ለምሳሌ፡ ተደጋጋሚ ያልተፈቀደ መቅረትና የስነ-ምግባር ግድፈት…' : 'Reason for suspension…'}
+              value={suspensionReason}
+              onChange={(e) => setSuspensionReason(e.target.value)}
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+            <button type="button" onClick={() => setSuspendModalOpen(false)} className="btn-outline text-xs">
+              {t('cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={suspending || !suspensionReason.trim()}
+              className="btn-gold bg-red-600 hover:bg-red-700 text-white font-bold text-xs"
+            >
+              {suspending ? t('saving') : lang === 'am' ? 'እገዳ ጣል (Confirm Suspension)' : 'Confirm Suspension'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Add Behavior Record Modal */}
+      <Modal
+        open={behaviorModalOpen}
+        title={
+          lang === 'am'
+            ? `የስነ-ምግባር መዝገብ አስገባ: ${activeStudentDetail?.fullNameAmharic || activeStudentDetail?.fullName}`
+            : `Log Behavior Record: ${activeStudentDetail?.fullName}`
+        }
+        onClose={() => setBehaviorModalOpen(false)}
+      >
+        <form onSubmit={handleSaveBehaviorRecord} className="space-y-3.5 text-xs">
+          <div>
+            <label className="label">{lang === 'am' ? 'የመዝገብ ዓይነት' : 'Record Type'} *</label>
+            <select
+              className="select w-full"
+              value={behaviorType}
+              onChange={(e) => setBehaviorType(e.target.value as any)}
+            >
+              <option value="COMMENDATION">{lang === 'am' ? 'ምስጋና እና ማበረታቻ (Commendation)' : 'Commendation'}</option>
+              <option value="WARNING">{lang === 'am' ? 'የጽሁፍ ማስጠንቀቂያ (Warning)' : 'Warning'}</option>
+              <option value="INFRACTION">{lang === 'am' ? 'ቀላል ጥፋት (Infraction)' : 'Infraction'}</option>
+              <option value="SUSPENSION">{lang === 'am' ? 'እገዳ (Suspension)' : 'Suspension'}</option>
+              <option value="GENERAL_NOTE">{lang === 'am' ? 'አጠቃላይ ማስታወሻ (General Note)' : 'General Note'}</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="label">{lang === 'am' ? 'ርዕስ (Title)' : 'Title'} *</label>
+            <input
+              type="text"
+              required
+              className="input w-full"
+              placeholder={lang === 'am' ? 'ለምሳሌ፡ በመዝሙርና ትምህርት የላቀ ተሳትፎ' : 'e.g. Excellent liturgical participation'}
+              value={behaviorTitle}
+              onChange={(e) => setBehaviorTitle(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="label">{lang === 'am' ? 'ዝርዝር ማብራሪያ (Description)' : 'Description'} *</label>
+            <textarea
+              required
+              rows={3}
+              className="input w-full"
+              placeholder={lang === 'am' ? 'የተፈጠረውን ሁኔታ በዝርዝር ይግለጹ…' : 'Details of incident or commendation…'}
+              value={behaviorDescription}
+              onChange={(e) => setBehaviorDescription(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="label">{lang === 'am' ? 'የተወሰደ እርምጃ (Action Taken - Optional)' : 'Action Taken'}</label>
+            <input
+              type="text"
+              className="input w-full"
+              placeholder={lang === 'am' ? 'ለምሳሌ፡ ለወላጆች በስልክ ተነግሯል' : 'e.g. Parents notified by phone'}
+              value={behaviorActionTaken}
+              onChange={(e) => setBehaviorActionTaken(e.target.value)}
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+            <button type="button" onClick={() => setBehaviorModalOpen(false)} className="btn-outline text-xs">
+              {t('cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={savingBehavior || !behaviorTitle.trim() || !behaviorDescription.trim()}
+              className="btn-gold text-xs font-bold"
+            >
+              {savingBehavior ? t('saving') : lang === 'am' ? 'መዝገብ አስቀምጥ' : 'Save Record'}
             </button>
           </div>
         </form>

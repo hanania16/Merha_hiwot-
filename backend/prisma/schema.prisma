@@ -58,6 +58,22 @@ enum Gender {
 enum StudentStatus {
   ACTIVE
   INACTIVE
+  SUSPENDED
+}
+
+enum BehaviorStatus {
+  EXCELLENT
+  GOOD
+  WARNING
+  SUSPENDED
+}
+
+enum BehaviorRecordType {
+  COMMENDATION
+  WARNING
+  INFRACTION
+  SUSPENSION
+  GENERAL_NOTE
 }
 
 enum ClassLevel {
@@ -208,6 +224,7 @@ model User {
   approvedGrades         StudentGrade[]        @relation("GradeApprovedBy")
   sentMessages           DepartmentMessage[]   @relation("SentMessages")
   certificatesCreated    CertificateRecord[]   @relation("CertificatesCreated")
+  behaviorRecordsReported StudentBehaviorRecord[] @relation("BehaviorReportedBy")
 
   @@map("users")
 }
@@ -257,6 +274,14 @@ model Student {
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
+  // Conduct & Behavior Tracking (with suspension flags)
+  behaviorStatus    BehaviorStatus        @default(GOOD)
+  isSuspended       Boolean               @default(false)
+  suspensionReason  String?
+  suspensionDate    DateTime?
+  suspensionEndDate DateTime?
+  behaviorRecords   StudentBehaviorRecord[]
+
   monthlyPayments   MonthlyPayment[]
   receipts          Receipt[]
   Income            Income[]
@@ -266,6 +291,25 @@ model Student {
   @@index([fullName])
   @@index([parentPhone])
   @@map("students")
+}
+
+model StudentBehaviorRecord {
+  id           String             @id @default(uuid())
+  studentId    String
+  student      Student            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  type         BehaviorRecordType @default(GENERAL_NOTE)
+  title        String
+  description  String
+  actionTaken  String?
+  incidentDate DateTime           @default(now())
+  reportedById String?
+  reportedBy   User?              @relation("BehaviorReportedBy", fields: [reportedById], references: [id])
+  ethiopianYear Int               @default(2018)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([studentId])
+  @@map("student_behavior_records")
 }
 
 // ----------------------------------------------------------------------------

@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { api } from '@/lib/api';
 import { useLang } from '@/lib/i18n';
 import { getCurrentUser } from '@/lib/auth';
 import { Topbar } from '@/components/layout/Topbar';
 import { Modal } from '@/components/ui/Modal';
+import { SignaturePad } from '@/components/ui/SignaturePad';
 import {
   Scroll,
   Printer,
@@ -20,6 +21,14 @@ import {
   Sliders,
   Palette,
   Layers,
+  BookOpen,
+  Calendar,
+  Check,
+  PenTool,
+  CheckCircle2,
+  CheckSquare,
+  Square,
+  ChevronRight,
 } from 'lucide-react';
 
 interface Student {
@@ -27,7 +36,29 @@ interface Student {
   studentCode: string;
   fullName: string;
   fullNameAmharic: string | null;
+  gender?: string;
+  dateOfBirth?: string;
+  age?: number;
   class: { id: string; name: string; level: string };
+}
+
+interface CourseItem {
+  id: string;
+  code: string;
+  name: string;
+  nameAmharic: string;
+  classLevel: string;
+  targetGrade?: string | null;
+  teacher?: { id: string; fullName: string; signatureUrl?: string };
+}
+
+interface CourseBreakdownItem {
+  courseId?: string;
+  code: string;
+  name?: string;
+  nameAmharic: string;
+  score: number;
+  letterGrade: string;
 }
 
 interface CertificateRecord {
@@ -46,12 +77,21 @@ interface CertificateRecord {
   bibleVerseAmharic: string | null;
   overallGrade: string | null;
   rankText: string | null;
+  numberOfCourses?: number | null;
+  totalScore?: number | null;
+  averageScore?: number | null;
+  rankInClass?: number | null;
+  totalStudentsInClass?: number | null;
+  courseBreakdown?: CourseBreakdownItem[] | null;
   signatory1Title: string;
   signatory1Name: string;
+  signatory1Signature?: string | null;
   signatory2Title: string;
   signatory2Name: string;
+  signatory2Signature?: string | null;
   signatory3Title: string;
   signatory3Name: string;
+  signatory3Signature?: string | null;
   borderStyle: string;
   themeColor: string;
   createdAt: string;
@@ -59,7 +99,26 @@ interface CertificateRecord {
     studentCode: string;
     fullName: string;
     fullNameAmharic: string | null;
+    gender?: string;
+    age?: number;
+    class?: { id: string; name: string; level: string };
   };
+}
+
+interface SystemSetting {
+  id: string;
+  systemNameAmharic: string;
+  systemNameEnglish: string;
+  churchNameAmharic: string;
+  churchNameEnglish: string;
+  mottoAmharic: string | null;
+  primaryColorHex: string;
+  accentColorHex: string;
+  logoUrl: string | null;
+  currentAcademicYear: number;
+  defaultPassingScore: number | string;
+  teachingAdminName: string | null;
+  churchAdminName: string | null;
 }
 
 const BIBLE_VERSES = [
@@ -74,16 +133,36 @@ export default function CertificatesPage() {
   const user = getCurrentUser();
   const isAdmin = user?.role === 'ADMINISTRATOR';
 
+  const [activeTab, setActiveTab] = useState<'batch_roster' | 'create' | 'history'>('batch_roster');
   const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [systemSettings, setSystemSettings] = useState<SystemSetting | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'create' | 'history'>('create');
   const [notification, setNotification] = useState<string | null>(null);
 
-  // Certificate Builder State
+  // -------------------------------------------------------------
+  // BATCH MULTI-COURSE CERTIFICATE GENERATOR STATE (Item 4)
+  // -------------------------------------------------------------
+  const [batchClassLevel, setBatchClassLevel] = useState<string>('CLASS_7_12');
+  const [batchSemester, setBatchSemester] = useState<string>('SEMESTER_1');
+  const [batchYear, setBatchYear] = useState<number>(2018);
+  const [availableCourses, setAvailableCourses] = useState<CourseItem[]>([]);
+  const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
+  const [batchGrades, setBatchGrades] = useState<any[]>([]);
+  const [generatingBatch, setGeneratingBatch] = useState(false);
+  const [batchTemplateType, setBatchTemplateType] = useState<CertificateRecord['templateType']>('HONOR_EXCELLENCE');
+  const [batchIssueDate, setBatchIssueDate] = useState('ሰኔ 30 ቀን 2018 ዓ.ም');
+
+  // Preview Modal for individual certificate
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [previewCert, setPreviewCert] = useState<CertificateRecord | null>(null);
+
+  // -------------------------------------------------------------
+  // SINGLE CERTIFICATE BUILDER STATE
+  // -------------------------------------------------------------
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
-  const [templateType, setTemplateType] = useState<'STANDARD_COMPLETION' | 'HONOR_EXCELLENCE' | 'DISTINGUISHED_SERVICE' | 'PARTICIPATION'>('HONOR_EXCELLENCE');
+  const [templateType, setTemplateType] = useState<CertificateRecord['templateType']>('HONOR_EXCELLENCE');
   const [titleAmharic, setTitleAmharic] = useState('የክብርና የላቀ ውጤት ምስክር ወረቀት');
   const [titleEnglish, setTitleEnglish] = useState('Certificate of Academic Excellence & High Honor');
   const [recipientNameAmharic, setRecipientNameAmharic] = useState('');
@@ -92,37 +171,61 @@ export default function CertificatesPage() {
   const [academicYear, setAcademicYear] = useState(2018);
   const [issueDateEthiopian, setIssueDateEthiopian] = useState('ሰኔ 30 ቀን 2018 ዓ.ም');
   const [overallGrade, setOverallGrade] = useState('A+ (95.0%)');
-  const [rankText, setRankText] = useState('1ኛ ደረጃ (የክፍሉ ከፍተኛ ውጤት)');
+  const [rankText, setRankText] = useState('1ኛ ደረጃ (ከ 15 ተማሪዎች)');
+  const [numberOfCourses, setNumberOfCourses] = useState<number | ''>(4);
+  const [totalScore, setTotalScore] = useState<number | ''>(368);
+  const [averageScore, setAverageScore] = useState<number | ''>(92.0);
+  const [courseBreakdownList, setCourseBreakdownList] = useState<CourseBreakdownItem[]>([
+    { code: 'ETH-101', nameAmharic: 'ስነ ምግባር', score: 95, letterGrade: 'A+' },
+    { code: 'BIB-101', nameAmharic: 'መጽሐፍ ቅዱስ ጥናት', score: 88, letterGrade: 'A' },
+    { code: 'DOG-101', nameAmharic: 'ነገረ መለኮት', score: 92, letterGrade: 'A' },
+    { code: 'HIS-101', nameAmharic: 'የቤተክርስቲያን ታሪክ', score: 93, letterGrade: 'A' },
+  ]);
   const [customMessageAmharic, setCustomMessageAmharic] = useState(
-    'በደብረ መዊዕ መርሃ ህይወት ሰንበት ትምህርት ቤት በ2018 ዓ.ም የትምህርት ዘመን በነገረ ሃይማኖትና መንፈሳዊ ትምህርቶች ከፍተኛ ትጋትና የላቀ ክርስቲያናዊ ሥነ ምግባር በማሳየት 1ኛ ደረጃ ይዞ ላጠናቀቀው ተማሪ የተሰጠ የክብር ምስክር ወረቀት።',
+    'በደብረ አሚን መርሃ ህይወት ሰንበት ትምህርት ቤት በ2018 ዓ.ም የትምህርት ዘመን በነገረ ሃይማኖትና መንፈሳዊ ትምህርቶች ከፍተኛ ትጋትና የላቀ ክርስቲያናዊ ሥነ ምግባር በማሳየት 1ኛ ደረጃ ይዞ ላጠናቀቀው ተማሪ የተሰጠ የክብር ምስክር ወረቀት።',
   );
   const [bibleVerseAmharic, setBibleVerseAmharic] = useState(BIBLE_VERSES[0]);
 
-  // Signatories
+  // Signatories & Signatures
   const [signatory1Title, setSignatory1Title] = useState('የክፍሉ መምህር');
   const [signatory1Name, setSignatory1Name] = useState('መምህር ተክለ ማርያም');
+  const [signatory1Signature, setSignatory1Signature] = useState<string | null>(null);
+
   const [signatory2Title, setSignatory2Title] = useState('የትምህርት ክፍል ኃላፊ');
   const [signatory2Name, setSignatory2Name] = useState('ዲ/ን ዮሐንስ ወ/ሥላሴ');
+  const [signatory2Signature, setSignatory2Signature] = useState<string | null>(null);
+
   const [signatory3Title, setSignatory3Title] = useState('የሰንበት ት/ቤቱ ሰብሳቢ');
   const [signatory3Name, setSignatory3Name] = useState('መጋቤ ሐዲስ ኃይለ ሚካኤል');
+  const [signatory3Signature, setSignatory3Signature] = useState<string | null>(null);
 
-  // Print Format Customizations
-  const [borderStyle, setBorderStyle] = useState<'ETHIOPIC_GOLD_DOUBLE' | 'ROYAL_BURGUNDY' | 'PARCHMENT_CLASSIC'>('ETHIOPIC_GOLD_DOUBLE');
+  const [borderStyle, setBorderStyle] = useState<string>('ETHIOPIC_GOLD_DOUBLE');
   const [themeColor, setThemeColor] = useState('#D4AF37'); // Gold
 
   useEffect(() => {
     loadInitialData();
   }, []);
 
+  useEffect(() => {
+    loadClassCoursesAndGrades();
+  }, [batchClassLevel, batchSemester, batchYear]);
+
   async function loadInitialData() {
     try {
       setLoading(true);
-      const [certsRes, studentsRes] = await Promise.all([
+      const [certsRes, studentsRes, settingsRes] = await Promise.all([
         api.get<CertificateRecord[]>('/education/certificates'),
         api.get<{ data: Student[] }>('/students?limit=100'),
+        api.get<SystemSetting>('/settings').catch(() => null),
       ]);
-      setCertificates(certsRes);
+      setCertificates(certsRes || []);
       setStudents(studentsRes.data || []);
+      if (settingsRes) {
+        setSystemSettings(settingsRes);
+        if (settingsRes.teachingAdminName) setSignatory2Name(settingsRes.teachingAdminName);
+        if (settingsRes.churchAdminName) setSignatory3Name(settingsRes.churchAdminName);
+        if (settingsRes.accentColorHex) setThemeColor(settingsRes.accentColorHex);
+      }
 
       if (studentsRes.data && studentsRes.data.length > 0) {
         handleStudentSelect(studentsRes.data[0]);
@@ -134,61 +237,126 @@ export default function CertificatesPage() {
     }
   }
 
+  async function loadClassCoursesAndGrades() {
+    try {
+      const [coursesRes, gradesRes] = await Promise.all([
+        api.get<CourseItem[]>(`/education/courses?classLevel=${batchClassLevel}`),
+        api.get<any[]>(
+          `/education/grades?classLevel=${batchClassLevel}&ethiopianYear=${batchYear}&semester=${batchSemester}`,
+        ),
+      ]);
+      setAvailableCourses(coursesRes || []);
+      setBatchGrades(gradesRes || []);
+      // Auto-select all available courses for this class level
+      setSelectedCourseIds(coursesRes.map((c) => c.id));
+    } catch (err) {
+      console.error('Failed to load class courses/grades:', err);
+    }
+  }
+
   function handleStudentSelect(s: Student) {
     setSelectedStudentId(s.id);
     setRecipientNameAmharic(s.fullNameAmharic || s.fullName);
     setRecipientNameEnglish(s.fullName);
-    setCourseOrClass(`${s.class?.name || 'ክፍል 7-12'} (ሰንበት ትምህርት)`);
+    setCourseOrClass(`${s.class?.name || 'ሰንበት ትምህርት'}`);
   }
 
-  function applyTemplatePreset(type: 'STANDARD_COMPLETION' | 'HONOR_EXCELLENCE' | 'DISTINGUISHED_SERVICE' | 'PARTICIPATION') {
-    setTemplateType(type);
-    if (type === 'HONOR_EXCELLENCE') {
-      setTitleAmharic('የክብርና የላቀ ውጤት ምስክር ወረቀት');
-      setTitleEnglish('Certificate of Academic Excellence & High Honor');
-      setThemeColor('#D4AF37');
-      setBorderStyle('ETHIOPIC_GOLD_DOUBLE');
-      setRankText('1ኛ ደረጃ (የክፍሉ ከፍተኛ ውጤት)');
-      setOverallGrade('A+ (95.0%)');
-      setCustomMessageAmharic(
-        'በደብረ መዊዕ መርሃ ህይወት ሰንበት ትምህርት ቤት በመንፈሳዊ ትምህርቶች ከፍተኛ ትጋትና የላቀ ክርስቲያናዊ ሥነ ምግባር በማሳየት 1ኛ ደረጃ ይዞ ላጠናቀቀው ተማሪ የተሰጠ የክብር ምስክር ወረቀት።',
-      );
-    } else if (type === 'STANDARD_COMPLETION') {
-      setTitleAmharic('የምርቃት ምስክር ወረቀት');
-      setTitleEnglish('Certificate of Sunday School Graduation');
-      setThemeColor('#800020');
-      setBorderStyle('ROYAL_BURGUNDY');
-      setRankText('ተመራቂ');
-      setOverallGrade('ተጠናቋል');
-      setCustomMessageAmharic(
-        'በደብረ መዊዕ መርሃ ህይወት ሰንበት ትምህርት ቤት የተዘጋጀውን መንፈሳዊ የትምህርት መርሃ ግብር በተሳካ ሁኔታ ላጠናቀቀው ተማሪ የተሰጠ የምርቃት ምስክር ወረቀት።',
-      );
-    } else if (type === 'DISTINGUISHED_SERVICE') {
-      setTitleAmharic('የላቀ አገልግሎት ምስክር ወረቀት');
-      setTitleEnglish('Certificate of Distinguished Church Service');
-      setThemeColor('#0F52BA');
-      setBorderStyle('ETHIOPIC_GOLD_DOUBLE');
-      setRankText('የላቀ አገልጋይ');
-      setOverallGrade('አርአያ');
-      setCustomMessageAmharic(
-        'በደብረ መዊዕ መርሃ ህይወት ሰንበት ትምህርት ቤት በታማኝነት፣ በትጋትና በቅንነት ላበረከተው የላቀ መንፈሳዊ አገልግሎት የተሰጠ የክብር ምስክር ወረቀት።',
-      );
-    } else if (type === 'PARTICIPATION') {
-      setTitleAmharic('የተሳትፎ ምስክር ወረቀት');
-      setTitleEnglish('Certificate of Active Participation');
-      setThemeColor('#2E7D32');
-      setBorderStyle('PARCHMENT_CLASSIC');
-      setRankText('ንቁ ተሳታፊ');
-      setOverallGrade('ተሳትፏል');
-      setCustomMessageAmharic(
-        'በደብረ መዊዕ መርሃ ህይወት ሰንበት ትምህርት ቤት በተዘጋጀው መንፈሳዊ ጉባኤ እና የሥልጠና መርሃ ግብር ላይ በንቃት ለተሳተፈ ተማሪ የተሰጠ።',
-      );
+  function toggleCourseSelection(courseId: string) {
+    if (selectedCourseIds.includes(courseId)) {
+      setSelectedCourseIds(selectedCourseIds.filter((id) => id !== courseId));
+    } else {
+      setSelectedCourseIds([...selectedCourseIds, courseId]);
     }
   }
 
-  async function handleSaveCertificate() {
+  function selectAllCourses() {
+    setSelectedCourseIds(availableCourses.map((c) => c.id));
+  }
+
+  function deselectAllCourses() {
+    setSelectedCourseIds([]);
+  }
+
+  // Real-time computed class roster with multi-course metrics:
+  // Number of Courses, Sum of points, Average %, and Rank from whole class!
+  const computedClassStudents = students
+    .filter((s) => s.class?.level === batchClassLevel)
+    .map((s) => {
+      const studentGrades = batchGrades.filter(
+        (g) => g.studentId === s.id && selectedCourseIds.includes(g.courseId),
+      );
+      const coursesCount = studentGrades.length;
+      const sum = studentGrades.reduce((acc, g) => acc + Number(g.totalScore), 0);
+      const avg = coursesCount > 0 ? Number((sum / coursesCount).toFixed(2)) : 0;
+
+      // Grade breakdown map
+      const courseScores: { [courseId: string]: number } = {};
+      studentGrades.forEach((g) => {
+        courseScores[g.courseId] = Number(g.totalScore);
+      });
+
+      return {
+        student: s,
+        coursesCount,
+        sum,
+        avg,
+        courseScores,
+      };
+    })
+    // Sort descending by sum/avg to determine Rank
+    .sort((a, b) => b.sum - a.sum);
+
+  // Assign ranks
+  const totalInClass = computedClassStudents.length;
+  let rankCounter = 1;
+  const computedWithRanks = computedClassStudents.map((item, idx) => {
+    if (idx > 0 && item.sum < computedClassStudents[idx - 1].sum) {
+      rankCounter = idx + 1;
+    }
+    return {
+      ...item,
+      rank: rankCounter,
+      rankText: `${rankCounter}ኛ ደረጃ (ከ ${totalInClass} ተማሪዎች)`,
+    };
+  });
+
+  async function handleGenerateBatchCertificates() {
+    if (selectedCourseIds.length === 0) {
+      alert(lang === 'am' ? 'እባክዎ ቢያንስ አንድ የትምህርት ዓይነት ይምረጡ' : 'Please select at least one course roster');
+      return;
+    }
+    try {
+      setGeneratingBatch(true);
+      const res = await api.post<any>('/education/certificates/generate-class', {
+        classLevel: batchClassLevel,
+        courseIds: selectedCourseIds,
+        ethiopianYear: batchYear,
+        semester: batchSemester,
+        templateType: batchTemplateType,
+        issueDateEthiopian: batchIssueDate,
+      });
+
+      setNotification(
+        lang === 'am'
+          ? `በ${batchClassLevel} ለ${res.count} ተማሪዎች ሰርተፊኬቶች በድምር ውጤትና በደረጃ ተዘጋጅተዋል!`
+          : `Successfully generated ${res.count} multi-course certificates with class ranks!`,
+      );
+
+      // Reload certificates
+      const certsRes = await api.get<CertificateRecord[]>('/education/certificates');
+      setCertificates(certsRes || []);
+      setActiveTab('history');
+      setTimeout(() => setNotification(null), 6000);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to generate certificates');
+    } finally {
+      setGeneratingBatch(false);
+    }
+  }
+
+  async function handleSaveSingleCertificate() {
     if (!selectedStudentId) {
-      alert('Please select a student');
+      alert(lang === 'am' ? 'እባክዎ ተማሪ ይምረጡ' : 'Please select a student');
       return;
     }
     try {
@@ -205,14 +373,21 @@ export default function CertificatesPage() {
         issueDateEthiopian,
         overallGrade,
         rankText,
+        numberOfCourses: Number(numberOfCourses) || undefined,
+        totalScore: Number(totalScore) || undefined,
+        averageScore: Number(averageScore) || undefined,
+        courseBreakdown: courseBreakdownList,
         customMessageAmharic,
         bibleVerseAmharic,
         signatory1Title,
         signatory1Name,
+        signatory1Signature,
         signatory2Title,
         signatory2Name,
+        signatory2Signature,
         signatory3Title,
         signatory3Name,
+        signatory3Signature,
         borderStyle,
         themeColor,
       });
@@ -245,6 +420,11 @@ export default function CertificatesPage() {
     }
   }
 
+  function openPreviewCertificate(cert: CertificateRecord) {
+    setPreviewCert(cert);
+    setPreviewModalOpen(true);
+  }
+
   return (
     <div className="space-y-6">
       {/* Print Stylesheet injection for A4 Landscape custom print formatting */}
@@ -270,10 +450,10 @@ export default function CertificatesPage() {
             width: 100vw !important;
             height: 100vh !important;
             margin: 0 !important;
-            padding: 20mm !important;
+            padding: 18mm !important;
             box-shadow: none !important;
             border: none !important;
-            background: white !important;
+            background: #FCFBF7 !important;
             z-index: 999999 !important;
           }
         }
@@ -281,140 +461,396 @@ export default function CertificatesPage() {
 
       {/* Screen Header */}
       <div className="no-print">
-        <Topbar title={lang === 'am' ? 'የምስክር ወረቀት ማዘጋጃ እና ማተሚያ' : 'Certificate Generator & Custom Print Format'}>
+        <Topbar
+          title={lang === 'am' ? 'የምስክር ወረቀት ማዘጋጃና ማተሚያ' : 'Certificate Generator & Printing'}
+          subtitle={
+            lang === 'am'
+              ? 'ከቀረቡ የትምህርት ሮስተሮች በድምር ነጥብ፣ አማካይና ደረጃ ሰርተፊኬቶችን በጅምላ አዘጋጅተህ አትም'
+              : 'Generate multi-course certificates with totals, average %, class rank, and digital signatures'
+          }
+        >
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => setActiveTab(activeTab === 'create' ? 'history' : 'create')}
-              className="btn-outline flex items-center gap-1.5 text-xs sm:text-sm"
-            >
-              <Layers size={16} />
-              {activeTab === 'create'
-                ? lang === 'am' ? `የተሰጡ ሰርተፊኬቶች (${certificates.length})` : `Issued Certificates (${certificates.length})`
-                : lang === 'am' ? 'ወደ ማዘጋጃ ተመለስ' : 'Back to Designer'}
-            </button>
-            <button
               onClick={handlePrint}
-              className="btn-gold flex items-center gap-1.5 text-xs sm:text-sm font-bold"
+              className="btn-gold flex items-center gap-1.5 text-xs sm:text-sm font-bold shadow-md"
             >
               <Printer size={16} />
               {lang === 'am' ? 'ሰርተፊኬት አትም (Print)' : 'Print Certificate'}
             </button>
-            {isAdmin && (
-              <button
-                onClick={handleSaveCertificate}
-                disabled={saving}
-                className="btn-primary flex items-center gap-1.5 text-xs sm:text-sm"
-              >
-                <FileCheck2 size={16} className="text-gold" />
-                {saving ? t('saving') : lang === 'am' ? 'ሰነዱን መዝግብ (Save)' : 'Save Record'}
-              </button>
-            )}
           </div>
         </Topbar>
       </div>
 
       {notification && (
-        <div className="no-print p-3.5 bg-green-50 text-green-800 border border-green-200 rounded-lg text-xs font-semibold flex items-center gap-2">
-          <CheckCircle size={16} /> {notification}
+        <div className="no-print p-3.5 bg-green-50 text-green-800 border border-green-200 rounded-xl text-xs font-semibold flex items-center gap-2">
+          <CheckCircle size={16} className="text-green-600" /> {notification}
         </div>
       )}
 
-      {/* Mode Switcher */}
-      {activeTab === 'history' ? (
-        /* Certificates History Table */
-        <div className="card overflow-hidden no-print">
-          <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-mist/30">
-            <h3 className="font-bold text-sm text-ink flex items-center gap-2">
-              <Scroll size={18} className="text-gold" />
-              <span>{lang === 'am' ? 'የተሰጡ የምስክር ወረቀቶች ታሪክ' : 'Issued Certificate History'}</span>
-            </h3>
-            <span className="text-xs text-slate">{certificates.length} {lang === 'am' ? 'ሰርተፊኬቶች' : 'certificates'}</span>
+      {/* Navigation Tabs */}
+      <div className="no-print flex border-b border-gray-200 gap-2">
+        <button
+          onClick={() => setActiveTab('batch_roster')}
+          className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 flex items-center gap-2 ${
+            activeTab === 'batch_roster'
+              ? 'border-gold text-ink'
+              : 'border-transparent text-slate hover:text-ink'
+          }`}
+        >
+          <Award size={15} className={activeTab === 'batch_roster' ? 'text-gold' : ''} />
+          {lang === 'am' ? '1. ከቀረቡ የትምህርት ሮስተሮች በጅምላ አዘጋጅ' : '1. Generate from Course Rosters'}
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-gold/20 text-gold font-bold">
+            አዲስ (Multi-Course)
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('create')}
+          className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 flex items-center gap-2 ${
+            activeTab === 'create'
+              ? 'border-gold text-ink'
+              : 'border-transparent text-slate hover:text-ink'
+          }`}
+        >
+          <Sliders size={15} className={activeTab === 'create' ? 'text-gold' : ''} />
+          {lang === 'am' ? '2. ነጠላ ሰርተፊኬት ማበጃ (Designer)' : '2. Single Certificate Designer'}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 flex items-center gap-2 ${
+            activeTab === 'history'
+              ? 'border-gold text-ink'
+              : 'border-transparent text-slate hover:text-ink'
+          }`}
+        >
+          <Scroll size={15} className={activeTab === 'history' ? 'text-gold' : ''} />
+          {lang === 'am' ? '3. የተዘጋጁ ሰርተፊኬቶች ታሪክ' : '3. Certificate Records'}
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-gray-100 text-slate font-bold">
+            {certificates.length}
+          </span>
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="card p-12 text-center text-xs text-slate">{t('loading')}</div>
+      ) : activeTab === 'batch_roster' ? (
+        /* ========================================================================= */
+        /* TAB 1: BATCH ROSTER CERTIFICATE GENERATOR (Item 4 & 5 Core Feature)       */
+        /* ========================================================================= */
+        <div className="space-y-5 no-print">
+          {/* Controls: Class Level, Semester, Year */}
+          <div className="card p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="font-bold text-sm text-ink flex items-center gap-2">
+                  <Award className="text-gold" size={17} />
+                  <span>{lang === 'am' ? 'ደረጃ 1፡ የክፍልና የመንፈቀ ዓመት መረጣ' : 'Step 1: Select Class & Term'}</span>
+                </h3>
+                <p className="text-xs text-slate mt-0.5">
+                  {lang === 'am'
+                    ? 'የተማሪዎችን ውጤት ለማጠቃለልና የምስክር ወረቀት ለማዘጋጀት ክፍሉንና መንፈቀ ዓመቱን ይምረጡ'
+                    : 'Choose the class level and semester to aggregate multi-course grades'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate">{lang === 'am' ? 'የትምህርት ዘመን:' : 'Year:'}</span>
+                <select
+                  className="input py-1 text-xs font-bold"
+                  value={batchYear}
+                  onChange={(e) => setBatchYear(Number(e.target.value))}
+                >
+                  <option value={2018}>2018 ዓ.ም</option>
+                  <option value={2017}>2017 ዓ.ም</option>
+                  <option value={2019}>2019 ዓ.ም</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Class Level Tabs */}
+            <div>
+              <label className="label">{lang === 'am' ? 'የክፍል ደረጃ (Class Level)' : 'Class Level'}</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {[
+                  { id: 'CLASS_1_3', titleAm: 'ክፍል 1-3', subAm: 'ከ1ኛ እስከ 3ኛ ክፍል' },
+                  { id: 'CLASS_4_6', titleAm: 'ክፍል 4-6', subAm: 'ከ4ኛ እስከ 6ኛ ክፍል' },
+                  { id: 'CLASS_7_12', titleAm: 'ክፍል 7-12', subAm: 'ከ7ኛ እስከ 12ኛ ክፍል' },
+                ].map((lvl) => (
+                  <button
+                    key={lvl.id}
+                    type="button"
+                    onClick={() => setBatchClassLevel(lvl.id)}
+                    className={`p-3 rounded-xl border text-left transition-all ${
+                      batchClassLevel === lvl.id
+                        ? 'border-gold bg-gold/10 ring-2 ring-gold/30'
+                        : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <p className="font-bold text-xs text-ink">{lvl.titleAm}</p>
+                    <p className="text-[11px] text-slate">{lvl.subAm}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Semester Tabs */}
+            <div>
+              <label className="label">{lang === 'am' ? 'መንፈቀ ዓመት (Semester / Term)' : 'Semester'}</label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBatchSemester('SEMESTER_1')}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                    batchSemester === 'SEMESTER_1'
+                      ? 'bg-gold text-ink shadow-sm'
+                      : 'bg-gray-100 text-slate hover:bg-gray-200'
+                  }`}
+                >
+                  <span className="w-5 h-5 rounded-full bg-ink/10 flex items-center justify-center text-[10px]">1</span>
+                  {lang === 'am' ? '1ኛ መንፈቀ ዓመት' : '1st Semester'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBatchSemester('SEMESTER_2')}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                    batchSemester === 'SEMESTER_2'
+                      ? 'bg-gold text-ink shadow-sm'
+                      : 'bg-gray-100 text-slate hover:bg-gray-200'
+                  }`}
+                >
+                  <span className="w-5 h-5 rounded-full bg-ink/10 flex items-center justify-center text-[10px]">2</span>
+                  {lang === 'am' ? '2ኛ መንፈቀ ዓመት' : '2nd Semester'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBatchSemester('YEAR_ROUND')}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                    batchSemester === 'YEAR_ROUND'
+                      ? 'bg-gold text-ink shadow-sm'
+                      : 'bg-gray-100 text-slate hover:bg-gray-200'
+                  }`}
+                >
+                  {lang === 'am' ? 'ዓመታዊ ማጠቃለያ' : 'Year-Round'}
+                </button>
+              </div>
+            </div>
           </div>
 
-          {certificates.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate">
-              {lang === 'am' ? 'ምንም የተሰጠ ሰርተፊኬት የለም' : 'No certificates issued yet'}
+          {/* Course Rosters Selection Card */}
+          <div className="card p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="font-bold text-sm text-ink flex items-center gap-2">
+                  <BookOpen className="text-gold" size={17} />
+                  <span>{lang === 'am' ? 'ደረጃ 2፡ በሰርተፊኬቱ ላይ የሚካተቱ የትምህርት ሮስተሮች' : 'Step 2: Pick Course Rosters'}</span>
+                </h3>
+                <p className="text-xs text-slate mt-0.5">
+                  {lang === 'am'
+                    ? 'መምህራን ያስገቧቸውን የትምህርት ውጤቶች ይምረጡ፤ ሲስተሙ የነጥብ ድምር፣ አማካይ እና የክፍል ደረጃ ያሰላል'
+                    : 'Select submitted course marks to include in the certificate calculation'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={selectAllCourses}
+                  className="text-xs text-gold hover:underline font-semibold"
+                >
+                  {lang === 'am' ? 'ሁሉንም ምረጥ' : 'Select All'}
+                </button>
+                <span className="text-slate">•</span>
+                <button
+                  type="button"
+                  onClick={deselectAllCourses}
+                  className="text-xs text-slate hover:underline"
+                >
+                  {lang === 'am' ? 'ሁሉንም አውጣ' : 'Deselect All'}
+                </button>
+              </div>
             </div>
-          ) : (
+
+            {availableCourses.length === 0 ? (
+              <p className="text-xs text-slate italic p-4 text-center">
+                {lang === 'am' ? 'በዚህ ክፍል ምንም የተመዘገበ ትምህርት የለም።' : 'No courses registered in this class level.'}
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {availableCourses.map((c) => {
+                  const isChecked = selectedCourseIds.includes(c.id);
+                  const gradesCount = batchGrades.filter((g) => g.courseId === c.id).length;
+                  return (
+                    <div
+                      key={c.id}
+                      onClick={() => toggleCourseSelection(c.id)}
+                      className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3 select-none ${
+                        isChecked
+                          ? 'border-gold bg-gold/10 shadow-xs'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="mt-0.5 text-gold shrink-0">
+                        {isChecked ? <CheckSquare size={17} /> : <Square size={17} className="text-slate/60" />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="font-mono text-[10px] text-gold font-bold uppercase block">{c.code}</span>
+                        <h4 className="font-bold text-xs text-ink truncate">{c.nameAmharic}</h4>
+                        <p className="text-[11px] text-slate truncate">{c.name}</p>
+                        <div className="mt-1 flex items-center justify-between text-[10px] text-slate border-t border-gray-100 pt-1">
+                          <span>{c.teacher?.fullName || 'መምህር አልተመደበም'}</span>
+                          <span className="font-semibold text-emerald-700">{gradesCount} ተማሪዎች</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Step 3: Aggregated Student Grades & Class Rankings Table */}
+          <div className="card overflow-hidden">
+            <div className="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3 bg-mist/30">
+              <div>
+                <h3 className="font-bold text-sm text-ink flex items-center gap-2">
+                  <CheckCircle2 size={17} className="text-emerald-600" />
+                  <span>
+                    {lang === 'am' ? 'ደረጃ 3፡ የተሰላ የውጤት ድምር፣ አማካይ እና የክፍሉ ደረጃ' : 'Step 3: Aggregated Totals, Average % & Class Ranks'}
+                  </span>
+                </h3>
+                <p className="text-xs text-slate mt-0.5">
+                  {lang === 'am'
+                    ? `በመምረጣቸው ${selectedCourseIds.length} የትምህርት ዓይነቶች መሠረት ለእያንዳንዱ ተማሪ የተሰላ ደረጃ`
+                    : `Live computed scores across ${selectedCourseIds.length} selected courses`}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-xs bg-gold/20 text-gold font-bold px-2.5 py-1 rounded-full">
+                  {computedWithRanks.length} {lang === 'am' ? 'ተማሪዎች' : 'Students'}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleGenerateBatchCertificates}
+                  disabled={generatingBatch || selectedCourseIds.length === 0 || computedWithRanks.length === 0}
+                  className="btn-gold flex items-center gap-2 text-xs font-bold py-2 px-4 shadow-md"
+                >
+                  <Sparkles size={15} />
+                  {generatingBatch
+                    ? t('saving')
+                    : lang === 'am'
+                    ? 'የክፍል ሰርተፊኬቶችን በጅምላ አዘጋጅ (Generate)'
+                    : 'Generate All Class Certificates'}
+                </button>
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="table-base">
                 <thead>
                   <tr className="bg-mist/40">
-                    <th>{lang === 'am' ? 'ቁጥር' : 'Cert No'}</th>
-                    <th>{lang === 'am' ? 'የተማሪው ስም' : 'Student Name'}</th>
-                    <th>{lang === 'am' ? 'የሰርተፊኬቱ ዓይነት' : 'Certificate Type'}</th>
-                    <th>{lang === 'am' ? 'ክፍል' : 'Class'}</th>
-                    <th>{lang === 'am' ? 'ውጤት / ደረጃ' : 'Grade / Rank'}</th>
-                    <th>{lang === 'am' ? 'የተሰጠበት ቀን' : 'Issue Date'}</th>
-                    <th className="text-center">{lang === 'am' ? 'እርምጃ' : 'Action'}</th>
+                    <th className="w-16">{lang === 'am' ? 'መለያ' : 'ID'}</th>
+                    <th className="min-w-[140px]">{lang === 'am' ? 'የተማሪው ስም' : 'Student Name'}</th>
+                    <th className="w-24 text-center">{lang === 'am' ? 'ዕድሜ / ፆታ' : 'Age / Gender'}</th>
+                    {availableCourses
+                      .filter((c) => selectedCourseIds.includes(c.id))
+                      .map((c) => (
+                        <th key={c.id} className="text-center font-semibold text-xs">
+                          {c.nameAmharic}
+                        </th>
+                      ))}
+                    <th className="w-24 text-center font-bold text-ink">{lang === 'am' ? 'የትምህርት ብዛት' : 'Courses'}</th>
+                    <th className="w-24 text-center font-bold text-ink">{lang === 'am' ? 'ድምር ነጥብ' : 'Total Score'}</th>
+                    <th className="w-24 text-center font-bold text-gold">{lang === 'am' ? 'አማካይ (%)' : 'Average'}</th>
+                    <th className="w-28 text-center font-bold text-ink">{lang === 'am' ? 'ከክፍሉ ደረጃ' : 'Class Rank'}</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {certificates.map((c) => (
-                    <tr key={c.id} className="hover:bg-amber-50/20">
-                      <td className="font-mono text-xs font-bold text-gold">{c.certificateNumber}</td>
-                      <td>
-                        <p className="font-semibold text-xs text-ink">{c.recipientNameAmharic || c.recipientNameEnglish}</p>
-                        <p className="text-[10px] text-slate">{c.recipientNameEnglish}</p>
-                      </td>
-                      <td className="text-xs text-slate">{c.titleAmharic}</td>
-                      <td className="text-xs text-slate">{c.courseOrClass}</td>
-                      <td>
-                        <span className="font-bold text-xs text-ink">{c.overallGrade || '-'}</span>
-                        {c.rankText && <span className="text-[10px] text-slate block">{c.rankText}</span>}
-                      </td>
-                      <td className="text-xs text-slate">{c.issueDateEthiopian}</td>
-                      <td className="text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => {
-                              setSelectedStudentId(c.studentId);
-                              setTemplateType(c.templateType);
-                              setTitleAmharic(c.titleAmharic);
-                              setTitleEnglish(c.titleEnglish);
-                              setRecipientNameAmharic(c.recipientNameAmharic);
-                              setRecipientNameEnglish(c.recipientNameEnglish);
-                              setCourseOrClass(c.courseOrClass);
-                              setAcademicYear(c.academicYear);
-                              setIssueDateEthiopian(c.issueDateEthiopian);
-                              setOverallGrade(c.overallGrade || '');
-                              setRankText(c.rankText || '');
-                              setCustomMessageAmharic(c.customMessageAmharic || '');
-                              setBibleVerseAmharic(c.bibleVerseAmharic || '');
-                              setSignatory1Title(c.signatory1Title);
-                              setSignatory1Name(c.signatory1Name);
-                              setSignatory2Title(c.signatory2Title);
-                              setSignatory2Name(c.signatory2Name);
-                              setSignatory3Title(c.signatory3Title);
-                              setSignatory3Name(c.signatory3Name);
-                              setThemeColor(c.themeColor);
-                              setActiveTab('create');
-                            }}
-                            className="p-1 text-slate hover:text-gold"
-                            title="Load & Print"
-                          >
-                            <Printer size={15} />
-                          </button>
-                          {isAdmin && (
-                            <button
-                              onClick={() => handleDeleteCertificate(c.id)}
-                              className="p-1 text-slate hover:text-red-600"
-                              title="Delete"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          )}
-                        </div>
+                <tbody className="divide-y divide-gray-100">
+                  {computedWithRanks.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-xs text-slate">
+                        {lang === 'am' ? 'ምንም ተማሪ አልተገኘም' : 'No students found'}
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    computedWithRanks.map((item) => (
+                      <tr key={item.student.id} className="hover:bg-amber-50/20">
+                        <td className="font-mono text-xs text-slate">{item.student.studentCode}</td>
+                        <td>
+                          <p className="font-semibold text-xs text-ink">
+                            {lang === 'am' && item.student.fullNameAmharic
+                              ? item.student.fullNameAmharic
+                              : item.student.fullName}
+                          </p>
+                          {lang === 'am' && item.student.fullNameAmharic && (
+                            <p className="text-[10px] text-slate">{item.student.fullName}</p>
+                          )}
+                        </td>
+                        <td className="text-center text-xs text-slate whitespace-nowrap">
+                          <span className="font-medium text-ink">
+                            {item.student.age !== undefined && item.student.age !== null
+                              ? `${item.student.age} ዓመት`
+                              : '—'}
+                          </span>
+                          <span className="text-[10px] block text-slate/70">
+                            {item.student.gender === 'MALE' ? 'ወንድ' : 'ሴት'}
+                          </span>
+                        </td>
+
+                        {/* Individual Course Scores */}
+                        {availableCourses
+                          .filter((c) => selectedCourseIds.includes(c.id))
+                          .map((c) => {
+                            const sc = item.courseScores[c.id];
+                            return (
+                              <td key={c.id} className="text-center text-xs font-semibold">
+                                {sc !== undefined ? (
+                                  <span className={sc >= 50 ? 'text-ink' : 'text-rose-600'}>{sc}%</span>
+                                ) : (
+                                  <span className="text-slate/40">—</span>
+                                )}
+                              </td>
+                            );
+                          })}
+
+                        {/* Summary Metrics */}
+                        <td className="text-center text-xs font-bold text-ink">
+                          {item.coursesCount}
+                        </td>
+                        <td className="text-center text-xs font-bold text-ink">
+                          {item.sum} / {selectedCourseIds.length * 100}
+                        </td>
+                        <td className="text-center text-xs font-extrabold text-gold">
+                          {item.avg}%
+                        </td>
+                        <td className="text-center">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                              item.rank === 1
+                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                : item.rank === 2
+                                ? 'bg-slate-100 text-slate-800 border border-slate-300'
+                                : item.rank === 3
+                                ? 'bg-orange-100 text-orange-900 border border-orange-300'
+                                : 'bg-gray-100 text-slate'
+                            }`}
+                          >
+                            {item.rankText}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
-          )}
+          </div>
         </div>
-      ) : (
-        /* Certificate Designer & Live Preview */
+      ) : activeTab === 'create' ? (
+        /* ========================================================================= */
+        /* TAB 2: SINGLE CERTIFICATE DESIGNER & PREVIEW                              */
+        /* ========================================================================= */
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Panel: Customizer Controls (5 cols) */}
           <div className="lg:col-span-5 space-y-4 no-print">
@@ -440,72 +876,11 @@ export default function CertificatesPage() {
               </select>
             </div>
 
-            {/* Template Presets */}
-            <div className="card p-4 space-y-3">
-              <h4 className="font-bold text-xs uppercase tracking-wider text-slate flex items-center gap-1.5">
-                <Sparkles size={14} className="text-gold" />
-                <span>2. {lang === 'am' ? 'የሰርተፊኬት ቅርጸት ምረጥ' : 'Certificate Template'}</span>
-              </h4>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <button
-                  type="button"
-                  onClick={() => applyTemplatePreset('HONOR_EXCELLENCE')}
-                  className={`p-2.5 rounded-lg border text-left font-medium transition-all ${
-                    templateType === 'HONOR_EXCELLENCE'
-                      ? 'border-gold bg-amber-50 text-amber-900 font-bold ring-1 ring-gold'
-                      : 'border-gray-200 hover:bg-mist'
-                  }`}
-                >
-                  <span className="block text-gold font-bold">★ {lang === 'am' ? 'የክብር / የላቀ ውጤት' : 'Honor / Excellence'}</span>
-                  <span className="text-[10px] text-slate block">{lang === 'am' ? 'ከፍተኛ ውጤት ላመጡ' : 'High ranking students'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyTemplatePreset('STANDARD_COMPLETION')}
-                  className={`p-2.5 rounded-lg border text-left font-medium transition-all ${
-                    templateType === 'STANDARD_COMPLETION'
-                      ? 'border-red-900 bg-red-50 text-red-900 font-bold ring-1 ring-red-900'
-                      : 'border-gray-200 hover:bg-mist'
-                  }`}
-                >
-                  <span className="block text-red-800 font-bold">🎓 {lang === 'am' ? 'የምረቃ ሰርተፊኬት' : 'Graduation'}</span>
-                  <span className="text-[10px] text-slate block">{lang === 'am' ? 'ትምህርት ላጠናቀቁ' : 'Class completion'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyTemplatePreset('DISTINGUISHED_SERVICE')}
-                  className={`p-2.5 rounded-lg border text-left font-medium transition-all ${
-                    templateType === 'DISTINGUISHED_SERVICE'
-                      ? 'border-blue-900 bg-blue-50 text-blue-900 font-bold ring-1 ring-blue-900'
-                      : 'border-gray-200 hover:bg-mist'
-                  }`}
-                >
-                  <span className="block text-blue-800 font-bold">✝ {lang === 'am' ? 'የላቀ አገልግሎት' : 'Distinguished Service'}</span>
-                  <span className="text-[10px] text-slate block">{lang === 'am' ? 'ለመዘምራንና አገልጋዮች' : 'Choir & Sunday school'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => applyTemplatePreset('PARTICIPATION')}
-                  className={`p-2.5 rounded-lg border text-left font-medium transition-all ${
-                    templateType === 'PARTICIPATION'
-                      ? 'border-emerald-800 bg-emerald-50 text-emerald-900 font-bold ring-1 ring-emerald-800'
-                      : 'border-gray-200 hover:bg-mist'
-                  }`}
-                >
-                  <span className="block text-emerald-800 font-bold">📜 {lang === 'am' ? 'የተሳትፎ ምስክር' : 'Participation'}</span>
-                  <span className="text-[10px] text-slate block">{lang === 'am' ? 'ጉባኤና ስልጠና' : 'Seminar / Workshop'}</span>
-                </button>
-              </div>
-            </div>
-
             {/* Custom Content & Fields */}
             <div className="card p-4 space-y-3">
               <h4 className="font-bold text-xs uppercase tracking-wider text-slate flex items-center gap-1.5">
                 <Sliders size={14} className="text-gold" />
-                <span>3. {lang === 'am' ? 'ጽሑፎችንና መረጃዎችን አስተካክል' : 'Custom Certificate Texts'}</span>
+                <span>2. {lang === 'am' ? 'የውጤትና የአካዳሚክ መረጃዎች' : 'Academic Scores & Metrics'}</span>
               </h4>
 
               <div className="space-y-2.5 text-xs">
@@ -516,16 +891,6 @@ export default function CertificatesPage() {
                     className="input font-bold"
                     value={recipientNameAmharic}
                     onChange={(e) => setRecipientNameAmharic(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="label">{lang === 'am' ? 'የተማሪው ስም (በእንግሊዝኛ)' : 'Student Name (English)'}</label>
-                  <input
-                    type="text"
-                    className="input font-semibold"
-                    value={recipientNameEnglish}
-                    onChange={(e) => setRecipientNameEnglish(e.target.value)}
                   />
                 </div>
 
@@ -550,21 +915,40 @@ export default function CertificatesPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                {/* 4 Multi-Course Metrics (Item 4) */}
+                <div className="grid grid-cols-2 gap-2 p-3 bg-mist/30 rounded-xl border border-gray-100">
                   <div>
-                    <label className="label">{lang === 'am' ? 'አጠቃላይ ውጤት' : 'Overall Grade'}</label>
+                    <label className="label">{lang === 'am' ? 'የትምህርቶች ብዛት' : 'No. of Courses'}</label>
                     <input
-                      type="text"
-                      className="input font-bold text-gold"
-                      value={overallGrade}
-                      onChange={(e) => setOverallGrade(e.target.value)}
+                      type="number"
+                      className="input font-bold"
+                      value={numberOfCourses}
+                      onChange={(e) => setNumberOfCourses(e.target.value === '' ? '' : Number(e.target.value))}
                     />
                   </div>
                   <div>
-                    <label className="label">{lang === 'am' ? 'ደረጃ / ማዕረግ' : 'Rank / Title'}</label>
+                    <label className="label">{lang === 'am' ? 'ድምር ውጤት' : 'Total Score'}</label>
+                    <input
+                      type="number"
+                      className="input font-bold"
+                      value={totalScore}
+                      onChange={(e) => setTotalScore(e.target.value === '' ? '' : Number(e.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">{lang === 'am' ? 'አማካይ ውጤት (%)' : 'Average Score (%)'}</label>
+                    <input
+                      type="number"
+                      className="input font-bold text-gold"
+                      value={averageScore}
+                      onChange={(e) => setAverageScore(e.target.value === '' ? '' : Number(e.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">{lang === 'am' ? 'ከክፍሉ ደረጃ' : 'Class Rank'}</label>
                     <input
                       type="text"
-                      className="input font-semibold"
+                      className="input font-bold"
                       value={rankText}
                       onChange={(e) => setRankText(e.target.value)}
                     />
@@ -574,7 +958,7 @@ export default function CertificatesPage() {
                 <div>
                   <label className="label">{lang === 'am' ? 'የእንኳን ደስ አላችሁ ዝርዝር መግለጫ' : 'Congratulatory Body Text'}</label>
                   <textarea
-                    rows={3}
+                    rows={2}
                     className="input leading-relaxed"
                     value={customMessageAmharic}
                     onChange={(e) => setCustomMessageAmharic(e.target.value)}
@@ -594,95 +978,87 @@ export default function CertificatesPage() {
                       </option>
                     ))}
                   </select>
-                  <textarea
-                    rows={2}
-                    className="input text-[11px]"
-                    value={bibleVerseAmharic}
-                    onChange={(e) => setBibleVerseAmharic(e.target.value)}
-                  />
                 </div>
               </div>
             </div>
 
-            {/* Signatories & Style Panel */}
+            {/* Signatories & Signatures */}
             <div className="card p-4 space-y-3">
               <h4 className="font-bold text-xs uppercase tracking-wider text-slate flex items-center gap-1.5">
                 <Palette size={14} className="text-gold" />
-                <span>4. {lang === 'am' ? 'የማተሚያ ቅርጸትና ፊርማዎች' : 'Print Format & Signatures'}</span>
+                <span>3. {lang === 'am' ? 'የባለስልጣናት ይፋዊ ፊርማዎች' : 'Official Digital Signatures'}</span>
               </h4>
 
-              <div className="space-y-2 text-xs">
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="label">{lang === 'am' ? '1ኛ ፊርማ' : 'Signatory 1'}</label>
-                    <input
-                      type="text"
-                      className="input text-[11px] mb-1"
-                      value={signatory1Title}
-                      onChange={(e) => setSignatory1Title(e.target.value)}
-                    />
-                    <input
-                      type="text"
-                      className="input text-[11px]"
-                      value={signatory1Name}
-                      onChange={(e) => setSignatory1Name(e.target.value)}
-                    />
+              <div className="space-y-3 text-xs">
+                {/* Signatory 1: Teacher */}
+                <div className="p-2.5 rounded-lg border border-gray-200 space-y-1.5 bg-white">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-ink">{lang === 'am' ? '1. የክፍሉ/የትምህርቱ መምህር' : '1. Class Teacher'}</span>
+                    {signatory1Signature && (
+                      <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
+                        <Check size={11} /> ፊርማ ተያይዟል
+                      </span>
+                    )}
                   </div>
-                  <div>
-                    <label className="label">{lang === 'am' ? '2ኛ ፊርማ' : 'Signatory 2'}</label>
-                    <input
-                      type="text"
-                      className="input text-[11px] mb-1"
-                      value={signatory2Title}
-                      onChange={(e) => setSignatory2Title(e.target.value)}
-                    />
-                    <input
-                      type="text"
-                      className="input text-[11px]"
-                      value={signatory2Name}
-                      onChange={(e) => setSignatory2Name(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="label">{lang === 'am' ? '3ኛ ፊርማ' : 'Signatory 3'}</label>
-                    <input
-                      type="text"
-                      className="input text-[11px] mb-1"
-                      value={signatory3Title}
-                      onChange={(e) => setSignatory3Title(e.target.value)}
-                    />
-                    <input
-                      type="text"
-                      className="input text-[11px]"
-                      value={signatory3Name}
-                      onChange={(e) => setSignatory3Name(e.target.value)}
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    className="input text-[11px]"
+                    value={signatory1Name}
+                    onChange={(e) => setSignatory1Name(e.target.value)}
+                    placeholder="የመምህሩ ስም"
+                  />
                 </div>
 
-                <div className="pt-2 flex items-center justify-between">
-                  <span className="text-xs text-slate font-medium">{lang === 'am' ? 'የቀለም ቅንብር' : 'Theme Accent'}:</span>
-                  <div className="flex items-center gap-2">
-                    {[
-                      { color: '#D4AF37', label: 'Gold' },
-                      { color: '#800020', label: 'Burgundy' },
-                      { color: '#0F52BA', label: 'Navy' },
-                      { color: '#2E7D32', label: 'Emerald' },
-                    ].map((c) => (
-                      <button
-                        key={c.color}
-                        type="button"
-                        onClick={() => setThemeColor(c.color)}
-                        className={`w-6 h-6 rounded-full border-2 transition-transform ${
-                          themeColor === c.color ? 'scale-110 border-ink shadow-sm' : 'border-transparent'
-                        }`}
-                        style={{ backgroundColor: c.color }}
-                        title={c.label}
-                      />
-                    ))}
+                {/* Signatory 2: Education Head */}
+                <div className="p-2.5 rounded-lg border border-gray-200 space-y-1.5 bg-white">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-ink">{lang === 'am' ? '2. የትምህርት ክፍል ኃላፊ' : '2. Head of Education'}</span>
+                    {signatory2Signature && (
+                      <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
+                        <Check size={11} /> ፊርማ ተያይዟል
+                      </span>
+                    )}
                   </div>
+                  <input
+                    type="text"
+                    className="input text-[11px]"
+                    value={signatory2Name}
+                    onChange={(e) => setSignatory2Name(e.target.value)}
+                    placeholder="የትምህርት ኃላፊ ስም"
+                  />
+                </div>
+
+                {/* Signatory 3: Church Administrator */}
+                <div className="p-2.5 rounded-lg border border-gray-200 space-y-1.5 bg-white">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-ink">{lang === 'am' ? '3. የሰ/ት/ቤቱ ዋና አስተዳዳሪ' : '3. Church Administration'}</span>
+                    {signatory3Signature && (
+                      <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
+                        <Check size={11} /> ፊርማ ተያይዟል
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    className="input text-[11px]"
+                    value={signatory3Name}
+                    onChange={(e) => setSignatory3Name(e.target.value)}
+                    placeholder="የዋና አስተዳዳሪ ስም"
+                  />
                 </div>
               </div>
+
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={handleSaveSingleCertificate}
+                  disabled={saving}
+                  className="btn-primary w-full text-xs font-semibold mt-2"
+                >
+                  <FileCheck2 size={15} />
+                  {saving ? t('saving') : lang === 'am' ? 'ሰርተፊኬቱን መዝግብ (Save Record)' : 'Save Record'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -692,7 +1068,7 @@ export default function CertificatesPage() {
               <div className="no-print flex items-center justify-between">
                 <span className="text-xs font-bold text-slate flex items-center gap-1.5 uppercase tracking-wider">
                   <Eye size={14} className="text-gold" />
-                  <span>{lang === 'am' ? 'የሰርተፊኬቱ የቀጥታ እይታ (Live Preview & Print)' : 'Live Certificate Preview (A4 Landscape)'}</span>
+                  <span>{lang === 'am' ? 'የሰርተፊኬቱ የቀጥታ እይታ (Live Preview & Print)' : 'Live Certificate Preview'}</span>
                 </span>
                 <button
                   onClick={handlePrint}
@@ -708,7 +1084,7 @@ export default function CertificatesPage() {
                 className="print-certificate-target w-full bg-[#FCFBF7] text-[#111111] rounded-2xl shadow-xl overflow-hidden border border-gray-200 relative select-none"
                 style={{
                   aspectRatio: '1.414 / 1', // A4 Landscape ratio
-                  minHeight: '480px',
+                  minHeight: '520px',
                 }}
               >
                 {/* Outer Ethiopian Border with Rosettes */}
@@ -738,11 +1114,11 @@ export default function CertificatesPage() {
                 </div>
 
                 {/* Certificate Core Content */}
-                <div className="relative h-full flex flex-col justify-between p-7 sm:p-9 text-center">
+                <div className="relative h-full flex flex-col justify-between p-6 sm:p-8 text-center">
                   {/* Top Header */}
                   <div>
                     <div className="flex items-center justify-center gap-2 mb-1">
-                      <span className="text-xs sm:text-sm font-bold tracking-widest text-[#555] uppercase">
+                      <span className="text-[11px] sm:text-xs font-bold tracking-widest text-[#555] uppercase">
                         በስመ አብ ወወልድ ወመንፈስ ቅዱስ አሐዱ አምላክ አሜን
                       </span>
                     </div>
@@ -753,30 +1129,30 @@ export default function CertificatesPage() {
                       </div>
                       <div>
                         <h2 className="text-xs sm:text-sm font-bold tracking-wide text-ink">
-                          በኢትዮጵያ ኦርቶዶክስ ተዋሕዶ ቤተ ክርስቲያን
+                          {systemSettings?.churchNameAmharic || 'በኢትዮጵያ ኦርቶዶክስ ተዋሕዶ ቤተ ክርስቲያን'}
                         </h2>
                         <h1 className="text-sm sm:text-base font-extrabold tracking-wider" style={{ color: themeColor }}>
-                          ደብረ መዊዕ መርሃ ህይወት ሰንበት ትምህርት ቤት
+                          {systemSettings?.systemNameAmharic || 'ደብረ አሚን መርሃ ህይወት ሰንበት ትምህርት ቤት'}
                         </h1>
-                        <p className="text-[10px] sm:text-xs text-slate font-medium">
-                          የመንፈሳዊ ትምህርትና ሥልጠና ክፍል • Debre Mewee Merha Hiwot Sunday School
+                        <p className="text-[9px] sm:text-[11px] text-slate font-medium">
+                          {systemSettings?.systemNameEnglish || 'Merha Hiwot Sunday School'}
                         </p>
                       </div>
                     </div>
 
                     {/* Certificate Title Badge */}
-                    <div className="mt-3 inline-block">
+                    <div className="mt-2 inline-block">
                       <div
-                        className="px-6 py-1.5 rounded-full border-2 inline-flex flex-col items-center shadow-xs"
+                        className="px-5 py-1 rounded-full border-2 inline-flex flex-col items-center shadow-2xs"
                         style={{
                           borderColor: themeColor,
-                          backgroundColor: `${themeColor}15`,
+                          backgroundColor: `${themeColor}12`,
                         }}
                       >
-                        <span className="text-sm sm:text-base font-black tracking-wide" style={{ color: themeColor }}>
+                        <span className="text-xs sm:text-sm font-black tracking-wide" style={{ color: themeColor }}>
                           {titleAmharic}
                         </span>
-                        <span className="text-[9px] sm:text-[10px] font-semibold text-slate uppercase tracking-wider">
+                        <span className="text-[9px] font-semibold text-slate uppercase tracking-wider">
                           {titleEnglish}
                         </span>
                       </div>
@@ -784,104 +1160,137 @@ export default function CertificatesPage() {
                   </div>
 
                   {/* Middle Body: Recipient & Citation */}
-                  <div className="my-auto py-2 space-y-2">
-                    <p className="text-[11px] sm:text-xs text-slate tracking-wide">
-                      ይህ የምስክር ወረቀት በትምህርት ዘመኑ ለላቀ ትጋቱ ለተማሪ
+                  <div className="my-auto py-1 space-y-1.5">
+                    <p className="text-[10px] sm:text-[11px] text-slate tracking-wide">
+                      ይህ የምስክር ወረቀት በመንፈሳዊ ትምህርቱ ላሳየው ከፍተኛ ትጋትና የላቀ ውጤት ለተማሪ
                     </p>
 
                     <div>
-                      <h3 className="text-xl sm:text-2xl font-black text-ink tracking-wide font-serif">
+                      <h3 className="text-lg sm:text-xl font-black text-ink tracking-wide font-serif">
                         {recipientNameAmharic || 'ተማሪ ስም'}
                       </h3>
                       {recipientNameEnglish && (
-                        <p className="text-xs font-semibold text-slate font-sans mt-0.5 tracking-wider uppercase">
+                        <p className="text-[10px] font-semibold text-slate font-sans tracking-wider uppercase">
                           {recipientNameEnglish}
                         </p>
                       )}
                     </div>
 
-                    <p className="text-xs sm:text-sm font-bold text-slate">
+                    <p className="text-[11px] font-bold text-slate">
                       {courseOrClass}
                     </p>
 
+                    {/* 4 Multi-Course Metric Cards (Item 4 Requirements) */}
+                    <div className="max-w-xl mx-auto grid grid-cols-4 gap-2 pt-1">
+                      <div className="p-1.5 bg-white border border-gray-200 rounded-lg shadow-2xs">
+                        <span className="text-[9px] text-slate block leading-tight">የትምህርት ብዛት</span>
+                        <strong className="text-xs font-black text-ink">{numberOfCourses || 4}</strong>
+                      </div>
+                      <div className="p-1.5 bg-white border border-gray-200 rounded-lg shadow-2xs">
+                        <span className="text-[9px] text-slate block leading-tight">ድምር ውጤት</span>
+                        <strong className="text-xs font-black text-ink">{totalScore || 368}</strong>
+                      </div>
+                      <div className="p-1.5 bg-white border border-gray-200 rounded-lg shadow-2xs">
+                        <span className="text-[9px] text-slate block leading-tight">አማካይ ውጤት</span>
+                        <strong className="text-xs font-black text-gold">{averageScore || 92.0}%</strong>
+                      </div>
+                      <div className="p-1.5 bg-white border border-gray-200 rounded-lg shadow-2xs">
+                        <span className="text-[9px] text-slate block leading-tight">ከክፍሉ ደረጃ</span>
+                        <strong className="text-xs font-black text-ink">{rankText?.split('(')[0] || '1ኛ ደረጃ'}</strong>
+                      </div>
+                    </div>
+
                     {/* Citation text */}
-                    <p className="max-w-xl mx-auto text-[11px] sm:text-xs text-ink/80 leading-relaxed px-4">
+                    <p className="max-w-xl mx-auto text-[10px] text-ink/80 leading-relaxed px-4">
                       {customMessageAmharic}
                     </p>
 
-                    {/* Grade and Rank Ribbons */}
-                    {(overallGrade || rankText) && (
-                      <div className="flex items-center justify-center gap-3 pt-1">
-                        {rankText && (
-                          <span
-                            className="text-xs font-bold px-3 py-0.5 rounded-full border shadow-2xs"
-                            style={{
-                              borderColor: themeColor,
-                              color: themeColor,
-                              backgroundColor: `${themeColor}10`,
-                            }}
-                          >
-                            ★ {rankText}
-                          </span>
-                        )}
-                        {overallGrade && (
-                          <span className="text-xs font-bold px-3 py-0.5 rounded-full bg-ink text-white">
-                            ውጤት: {overallGrade}
-                          </span>
-                        )}
-                      </div>
-                    )}
-
                     {/* Bible Verse Box */}
                     {bibleVerseAmharic && (
-                      <div className="max-w-lg mx-auto pt-1">
-                        <p className="text-[10px] sm:text-[11px] italic font-serif text-slate border-t border-b border-gray-200 py-1 px-4">
+                      <div className="max-w-lg mx-auto pt-0.5">
+                        <p className="text-[9px] italic font-serif text-slate border-t border-b border-gray-200 py-0.5 px-4">
                           {bibleVerseAmharic}
                         </p>
                       </div>
                     )}
                   </div>
 
-                  {/* Bottom: Date, Gold Stamp & 3 Signatories */}
+                  {/* Bottom: Date, Gold Stamp & 3 Digital Signatures (Item 5) */}
                   <div className="pt-2">
                     <div className="grid grid-cols-4 items-end text-center gap-2">
-                      {/* Signatory 1 */}
-                      <div>
-                        <div className="w-24 sm:w-28 mx-auto border-b border-dashed border-gray-400 mb-1" />
-                        <p className="text-[10px] sm:text-[11px] font-bold text-ink">{signatory1Name}</p>
-                        <p className="text-[9px] text-slate">{signatory1Title}</p>
+                      {/* Signatory 1: Course / Class Teacher Signature */}
+                      <div className="flex flex-col items-center">
+                        <div className="h-10 flex items-center justify-center">
+                          {signatory1Signature ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img
+                              src={signatory1Signature}
+                              alt="Teacher Signature"
+                              className="max-h-9 max-w-[100px] object-contain"
+                            />
+                          ) : (
+                            <div className="w-16 h-4" />
+                          )}
+                        </div>
+                        <div className="w-24 sm:w-28 mx-auto border-b border-dashed border-gray-400 mb-0.5" />
+                        <p className="text-[9px] sm:text-[10px] font-bold text-ink">{signatory1Name}</p>
+                        <p className="text-[8px] text-slate">{signatory1Title}</p>
                       </div>
 
                       {/* Official Gold Seal Stamp */}
                       <div className="flex flex-col items-center justify-center">
                         <div
-                          className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-double flex flex-col items-center justify-center text-center shadow-xs"
+                          className="w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 border-double flex flex-col items-center justify-center text-center shadow-xs"
                           style={{
                             borderColor: themeColor,
                             color: themeColor,
                             backgroundColor: `${themeColor}15`,
                           }}
                         >
-                          <span className="text-sm font-bold">☩</span>
-                          <span className="text-[7px] font-bold tracking-tighter uppercase leading-tight">
-                            ደብረ መዊዕ<br />ማኅተም
+                          <span className="text-xs font-bold">☩</span>
+                          <span className="text-[6.5px] font-bold tracking-tighter uppercase leading-tight">
+                            መርሃ ህይወት<br />ማኅተም
                           </span>
                         </div>
-                        <span className="text-[8px] font-mono text-slate mt-0.5">{issueDateEthiopian}</span>
+                        <span className="text-[7.5px] font-mono text-slate mt-0.5">{issueDateEthiopian}</span>
                       </div>
 
-                      {/* Signatory 2 */}
-                      <div>
-                        <div className="w-24 sm:w-28 mx-auto border-b border-dashed border-gray-400 mb-1" />
-                        <p className="text-[10px] sm:text-[11px] font-bold text-ink">{signatory2Name}</p>
-                        <p className="text-[9px] text-slate">{signatory2Title}</p>
+                      {/* Signatory 2: Education Dept Head Signature */}
+                      <div className="flex flex-col items-center">
+                        <div className="h-10 flex items-center justify-center">
+                          {signatory2Signature ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img
+                              src={signatory2Signature}
+                              alt="Education Admin Signature"
+                              className="max-h-9 max-w-[100px] object-contain"
+                            />
+                          ) : (
+                            <div className="w-16 h-4" />
+                          )}
+                        </div>
+                        <div className="w-24 sm:w-28 mx-auto border-b border-dashed border-gray-400 mb-0.5" />
+                        <p className="text-[9px] sm:text-[10px] font-bold text-ink">{signatory2Name}</p>
+                        <p className="text-[8px] text-slate">{signatory2Title}</p>
                       </div>
 
-                      {/* Signatory 3 */}
-                      <div>
-                        <div className="w-24 sm:w-28 mx-auto border-b border-dashed border-gray-400 mb-1" />
-                        <p className="text-[10px] sm:text-[11px] font-bold text-ink">{signatory3Name}</p>
-                        <p className="text-[9px] text-slate">{signatory3Title}</p>
+                      {/* Signatory 3: Church Sunday School President Signature */}
+                      <div className="flex flex-col items-center">
+                        <div className="h-10 flex items-center justify-center">
+                          {signatory3Signature ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img
+                              src={signatory3Signature}
+                              alt="President Signature"
+                              className="max-h-9 max-w-[100px] object-contain"
+                            />
+                          ) : (
+                            <div className="w-16 h-4" />
+                          )}
+                        </div>
+                        <div className="w-24 sm:w-28 mx-auto border-b border-dashed border-gray-400 mb-0.5" />
+                        <p className="text-[9px] sm:text-[10px] font-bold text-ink">{signatory3Name}</p>
+                        <p className="text-[8px] text-slate">{signatory3Title}</p>
                       </div>
                     </div>
                   </div>
@@ -890,7 +1299,207 @@ export default function CertificatesPage() {
             </div>
           </div>
         </div>
+      ) : (
+        /* ========================================================================= */
+        /* TAB 3: CERTIFICATES HISTORY & PRINT DIRECTORY                             */
+        /* ========================================================================= */
+        <div className="card overflow-hidden no-print">
+          <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-mist/30">
+            <h3 className="font-bold text-sm text-ink flex items-center gap-2">
+              <Scroll size={18} className="text-gold" />
+              <span>{lang === 'am' ? 'የተሰጡ የምስክር ወረቀቶች ታሪክ' : 'Issued Certificate History'}</span>
+            </h3>
+            <span className="text-xs text-slate font-bold">{certificates.length} {lang === 'am' ? 'ሰርተፊኬቶች' : 'certificates'}</span>
+          </div>
+
+          {certificates.length === 0 ? (
+            <div className="p-8 text-center text-xs text-slate">
+              {lang === 'am' ? 'ምንም የተሰጠ ሰርተፊኬት የለም' : 'No certificates issued yet'}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table-base">
+                <thead>
+                  <tr className="bg-mist/40">
+                    <th>{lang === 'am' ? 'ቁጥር' : 'Cert No'}</th>
+                    <th>{lang === 'am' ? 'የተማሪው ስም' : 'Student Name'}</th>
+                    <th>{lang === 'am' ? 'ክፍል' : 'Class'}</th>
+                    <th className="text-center">{lang === 'am' ? 'ትምህርቶች' : 'Courses'}</th>
+                    <th className="text-center">{lang === 'am' ? 'ድምር' : 'Total'}</th>
+                    <th className="text-center">{lang === 'am' ? 'አማካይ' : 'Average'}</th>
+                    <th className="text-center">{lang === 'am' ? 'ደረጃ' : 'Rank'}</th>
+                    <th>{lang === 'am' ? 'የተሰጠበት ቀን' : 'Issue Date'}</th>
+                    <th className="text-center">{lang === 'am' ? 'እርምጃ' : 'Action'}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {certificates.map((c) => (
+                    <tr key={c.id} className="hover:bg-amber-50/20">
+                      <td className="font-mono text-xs font-bold text-gold">{c.certificateNumber}</td>
+                      <td>
+                        <p className="font-semibold text-xs text-ink">{c.recipientNameAmharic || c.recipientNameEnglish}</p>
+                        <p className="text-[10px] text-slate">{c.student?.studentCode} • {c.recipientNameEnglish}</p>
+                      </td>
+                      <td className="text-xs text-slate">{c.courseOrClass}</td>
+                      <td className="text-center text-xs font-bold text-ink">
+                        {c.numberOfCourses || '—'}
+                      </td>
+                      <td className="text-center text-xs font-bold text-ink">
+                        {c.totalScore !== undefined && c.totalScore !== null ? Number(c.totalScore) : '—'}
+                      </td>
+                      <td className="text-center text-xs font-extrabold text-gold">
+                        {c.averageScore !== undefined && c.averageScore !== null ? `${c.averageScore}%` : c.overallGrade || '—'}
+                      </td>
+                      <td className="text-center">
+                        <span className="font-bold text-xs bg-gold/15 text-gold border border-gold/30 px-2 py-0.5 rounded-full">
+                          {c.rankText || (c.rankInClass ? `${c.rankInClass}ኛ` : '—')}
+                        </span>
+                      </td>
+                      <td className="text-xs text-slate">{c.issueDateEthiopian}</td>
+                      <td className="text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => openPreviewCertificate(c)}
+                            className="btn-outline px-2.5 py-1 text-xs flex items-center gap-1"
+                            title="Preview & Print"
+                          >
+                            <Eye size={13} />
+                            {lang === 'am' ? 'እይና አትም' : 'Preview'}
+                          </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDeleteCertificate(c.id)}
+                              className="p-1 text-slate hover:text-red-600"
+                              title="Delete"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
+
+      {/* Modal for Previewing and Printing an Individual Certificate from History */}
+      <Modal
+        open={previewModalOpen}
+        title={previewCert ? `${previewCert.recipientNameAmharic} — ${previewCert.certificateNumber}` : 'Certificate'}
+        onClose={() => setPreviewModalOpen(false)}
+      >
+        {previewCert && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+              <span className="text-xs text-slate">
+                {lang === 'am' ? 'የተማሪው የምስክር ወረቀት ማተሚያ እይታ' : 'Student Certificate Print Ready'}
+              </span>
+              <button
+                onClick={() => {
+                  window.print();
+                }}
+                className="btn-gold flex items-center gap-1.5 text-xs py-1.5 px-3 font-bold"
+              >
+                <Printer size={14} />
+                {lang === 'am' ? 'አትም (Print)' : 'Print'}
+              </button>
+            </div>
+
+            {/* Certificate Box */}
+            <div
+              className="print-certificate-target w-full bg-[#FCFBF7] text-[#111] p-6 rounded-xl border border-gray-200 text-center relative"
+              style={{ minHeight: '440px' }}
+            >
+              <div className="border-4 rounded-lg p-5 relative" style={{ borderColor: previewCert.themeColor || '#D4AF37' }}>
+                <h2 className="text-xs font-bold text-slate">
+                  {systemSettings?.churchNameAmharic || 'በኢትዮጵያ ኦርቶዶክስ ተዋሕዶ ቤተ ክርስቲያን'}
+                </h2>
+                <h1 className="text-base font-black" style={{ color: previewCert.themeColor || '#D4AF37' }}>
+                  {systemSettings?.systemNameAmharic || 'ደብረ አሚን መርሃ ህይወት ሰንበት ትምህርት ቤት'}
+                </h1>
+                <div className="my-2 inline-block px-4 py-1 rounded-full border border-gold/40 bg-gold/10 text-xs font-black text-ink">
+                  {previewCert.titleAmharic}
+                </div>
+
+                <div className="my-3 space-y-1">
+                  <p className="text-xs text-slate">{lang === 'am' ? 'ይህ የምስክር ወረቀት ለተማሪ' : 'Awarded to'}</p>
+                  <h3 className="text-xl font-black text-ink font-serif">{previewCert.recipientNameAmharic}</h3>
+                  <p className="text-xs font-bold text-slate">{previewCert.courseOrClass}</p>
+                </div>
+
+                {/* 4 Performance Metric Badges */}
+                <div className="max-w-md mx-auto grid grid-cols-4 gap-2 my-3">
+                  <div className="p-1.5 bg-white border border-gray-200 rounded text-center">
+                    <span className="text-[9px] text-slate block">የትምህርት ብዛት</span>
+                    <strong className="text-xs font-bold text-ink">{previewCert.numberOfCourses || '—'}</strong>
+                  </div>
+                  <div className="p-1.5 bg-white border border-gray-200 rounded text-center">
+                    <span className="text-[9px] text-slate block">ድምር ነጥብ</span>
+                    <strong className="text-xs font-bold text-ink">{previewCert.totalScore ? Number(previewCert.totalScore) : '—'}</strong>
+                  </div>
+                  <div className="p-1.5 bg-white border border-gray-200 rounded text-center">
+                    <span className="text-[9px] text-slate block">አማካይ ውጤት</span>
+                    <strong className="text-xs font-bold text-gold">{previewCert.averageScore ? `${previewCert.averageScore}%` : previewCert.overallGrade || '—'}</strong>
+                  </div>
+                  <div className="p-1.5 bg-white border border-gray-200 rounded text-center">
+                    <span className="text-[9px] text-slate block">ከክፍሉ ደረጃ</span>
+                    <strong className="text-xs font-bold text-ink">{previewCert.rankText || '—'}</strong>
+                  </div>
+                </div>
+
+                {previewCert.customMessageAmharic && (
+                  <p className="text-xs text-ink/80 max-w-lg mx-auto leading-relaxed my-2">
+                    {previewCert.customMessageAmharic}
+                  </p>
+                )}
+
+                {/* 3 Signatures */}
+                <div className="grid grid-cols-3 gap-2 pt-4 border-t border-gray-200 mt-4 text-center items-end">
+                  <div className="flex flex-col items-center">
+                    <div className="h-9 flex items-center justify-center">
+                      {previewCert.signatory1Signature ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img src={previewCert.signatory1Signature} alt="Teacher Sig" className="max-h-8 max-w-[90px] object-contain" />
+                      ) : null}
+                    </div>
+                    <div className="w-24 border-b border-dashed border-gray-400 mb-0.5" />
+                    <p className="text-[10px] font-bold text-ink">{previewCert.signatory1Name}</p>
+                    <p className="text-[8px] text-slate">{previewCert.signatory1Title}</p>
+                  </div>
+
+                  <div className="flex flex-col items-center">
+                    <div className="h-9 flex items-center justify-center">
+                      {previewCert.signatory2Signature ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img src={previewCert.signatory2Signature} alt="Education Sig" className="max-h-8 max-w-[90px] object-contain" />
+                      ) : null}
+                    </div>
+                    <div className="w-24 border-b border-dashed border-gray-400 mb-0.5" />
+                    <p className="text-[10px] font-bold text-ink">{previewCert.signatory2Name}</p>
+                    <p className="text-[8px] text-slate">{previewCert.signatory2Title}</p>
+                  </div>
+
+                  <div className="flex flex-col items-center">
+                    <div className="h-9 flex items-center justify-center">
+                      {previewCert.signatory3Signature ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img src={previewCert.signatory3Signature} alt="Admin Sig" className="max-h-8 max-w-[90px] object-contain" />
+                      ) : null}
+                    </div>
+                    <div className="w-24 border-b border-dashed border-gray-400 mb-0.5" />
+                    <p className="text-[10px] font-bold text-ink">{previewCert.signatory3Name}</p>
+                    <p className="text-[8px] text-slate">{previewCert.signatory3Title}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

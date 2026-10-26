@@ -21,15 +21,37 @@ export class UsersController {
 
   @Roles(Role.ADMINISTRATOR)
   @Post()
-  create(@Body() body: { fullName: string; email: string; password?: string; role: Role; isActive?: boolean }) {
+  create(
+    @Body()
+    body: {
+      fullName: string;
+      email: string;
+      password?: string;
+      role: Role;
+      isActive?: boolean;
+      signatureUrl?: string;
+      titleAmharic?: string;
+      phone?: string;
+    },
+  ) {
     return this.usersService.create(body);
   }
 
-  @Roles(Role.ADMINISTRATOR)
+  @Roles(Role.ADMINISTRATOR, Role.TEACHER)
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @Body() body: { fullName?: string; email?: string; role?: Role; isActive?: boolean; password?: string },
+    @Body()
+    body: {
+      fullName?: string;
+      email?: string;
+      role?: Role;
+      isActive?: boolean;
+      password?: string;
+      signatureUrl?: string | null;
+      titleAmharic?: string | null;
+      phone?: string | null;
+    },
   ) {
     return this.usersService.update(id, body);
   }

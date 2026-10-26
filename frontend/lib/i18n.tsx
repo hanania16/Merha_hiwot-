@@ -19,6 +19,7 @@ const DICTIONARY: Record<string, Entry> = {
   expense: { en: 'Expense', am: 'ወጪ' },
   receipts: { en: 'Receipts', am: 'ደረሰኞች' },
   admin: { en: 'Admin', am: 'አስተዳደር' },
+  systemSettings: { en: 'System Settings', am: 'የስርዓት ቅንብሮች' },
   inactiveStudents: { en: 'Inactive Students', am: 'ንቁ ያልሆኑ ተማሪዎች' },
   signOut: { en: 'Sign out', am: 'ውጣ' },
   notifications: { en: 'Notifications', am: 'ማሳወቂያዎች' },

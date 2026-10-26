@@ -12,6 +12,7 @@ export interface SubmitGradeItemDto {
   finalExamScore?: number;
   conductScore?: number;
   remarks?: string;
+  teacherSignature?: string;
   status?: GradeStatus;
 }
 
@@ -19,6 +20,7 @@ export interface BatchSubmitGradesDto {
   courseId: string;
   ethiopianYear: number;
   semester: AcademicSemester;
+  teacherSignature?: string;
   grades: {
     studentId: string;
     assessmentScore?: number;
@@ -139,6 +141,7 @@ export class GradesService {
         letterGrade,
         status: dto.status ?? GradeStatus.SUBMITTED,
         remarks: dto.remarks?.trim(),
+        teacherSignature: dto.teacherSignature || undefined,
         submittedById: userId,
       },
       create: {
@@ -154,6 +157,7 @@ export class GradesService {
         letterGrade,
         status: dto.status ?? GradeStatus.SUBMITTED,
         remarks: dto.remarks?.trim(),
+        teacherSignature: dto.teacherSignature || null,
         submittedById: userId,
       },
       include: {
@@ -198,6 +202,7 @@ export class GradesService {
           letterGrade,
           status,
           remarks: item.remarks?.trim(),
+          ...(dto.teacherSignature && { teacherSignature: dto.teacherSignature }),
           submittedById: userId,
         },
         create: {
@@ -213,6 +218,7 @@ export class GradesService {
           letterGrade,
           status,
           remarks: item.remarks?.trim(),
+          teacherSignature: dto.teacherSignature || null,
           submittedById: userId,
         },
       });

@@ -16,6 +16,9 @@ export class UsersService {
         email: true,
         role: true,
         isActive: true,
+        signatureUrl: true,
+        titleAmharic: true,
+        phone: true,
         createdAt: true,
         updatedAt: true,
         coursesTeaching: {
@@ -50,6 +53,9 @@ export class UsersService {
         email: true,
         role: true,
         isActive: true,
+        signatureUrl: true,
+        titleAmharic: true,
+        phone: true,
         createdAt: true,
         updatedAt: true,
         coursesTeaching: {
@@ -69,7 +75,16 @@ export class UsersService {
     return user;
   }
 
-  async create(data: { fullName: string; email: string; password?: string; role: Role; isActive?: boolean }) {
+  async create(data: {
+    fullName: string;
+    email: string;
+    password?: string;
+    role: Role;
+    isActive?: boolean;
+    signatureUrl?: string;
+    titleAmharic?: string;
+    phone?: string;
+  }) {
     const normalizedEmail = data.email.toLowerCase().trim();
     const existing = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) {
@@ -83,6 +98,9 @@ export class UsersService {
         passwordHash,
         role: data.role,
         isActive: data.isActive ?? true,
+        signatureUrl: data.signatureUrl || null,
+        titleAmharic: data.titleAmharic?.trim() || null,
+        phone: data.phone?.trim() || null,
       },
       select: {
         id: true,
@@ -90,12 +108,27 @@ export class UsersService {
         email: true,
         role: true,
         isActive: true,
+        signatureUrl: true,
+        titleAmharic: true,
+        phone: true,
         createdAt: true,
       },
     });
   }
 
-  async update(id: string, data: { fullName?: string; email?: string; role?: Role; isActive?: boolean; password?: string }) {
+  async update(
+    id: string,
+    data: {
+      fullName?: string;
+      email?: string;
+      role?: Role;
+      isActive?: boolean;
+      password?: string;
+      signatureUrl?: string | null;
+      titleAmharic?: string | null;
+      phone?: string | null;
+    },
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
 
@@ -111,6 +144,9 @@ export class UsersService {
     }
     if (data.role !== undefined) updateData.role = data.role;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
+    if (data.signatureUrl !== undefined) updateData.signatureUrl = data.signatureUrl;
+    if (data.titleAmharic !== undefined) updateData.titleAmharic = data.titleAmharic?.trim() || null;
+    if (data.phone !== undefined) updateData.phone = data.phone?.trim() || null;
     if (data.password && data.password.trim().length > 0) {
       updateData.passwordHash = await bcrypt.hash(data.password, 10);
     }
@@ -124,6 +160,9 @@ export class UsersService {
         email: true,
         role: true,
         isActive: true,
+        signatureUrl: true,
+        titleAmharic: true,
+        phone: true,
         updatedAt: true,
       },
     });

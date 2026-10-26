@@ -8,6 +8,7 @@ import { Topbar } from '@/components/layout/Topbar';
 import { StatCard } from '@/components/ui/StatCard';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
+import { SignaturePad } from '@/components/ui/SignaturePad';
 import {
   Users,
   UserPlus,
@@ -21,6 +22,8 @@ import {
   KeyRound,
   BookOpen,
   Clock,
+  PenTool,
+  Phone,
 } from 'lucide-react';
 
 interface CourseAssigned {
@@ -39,6 +42,9 @@ interface UserRecord {
   email: string;
   role: 'ADMINISTRATOR' | 'TEACHER' | 'FINANCE_OFFICER';
   isActive: boolean;
+  signatureUrl?: string | null;
+  titleAmharic?: string | null;
+  phone?: string | null;
   createdAt: string;
   coursesTeaching?: CourseAssigned[];
   _count?: {
@@ -63,6 +69,9 @@ export default function UsersPage() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'ADMINISTRATOR' | 'TEACHER' | 'FINANCE_OFFICER'>('TEACHER');
+  const [titleAmharic, setTitleAmharic] = useState('');
+  const [phone, setPhone] = useState('');
+  const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -89,6 +98,9 @@ export default function UsersPage() {
     setFullName('');
     setEmail('');
     setRole('TEACHER');
+    setTitleAmharic('የክፍሉ መምህር');
+    setPhone('');
+    setSignatureUrl(null);
     setPassword('Password123!');
     setIsActive(true);
     setErrorMsg('');
@@ -100,6 +112,9 @@ export default function UsersPage() {
     setFullName(user.fullName);
     setEmail(user.email);
     setRole(user.role);
+    setTitleAmharic(user.titleAmharic || (user.role === 'TEACHER' ? 'የክፍሉ መምህር' : user.role === 'ADMINISTRATOR' ? 'የትምህርት ክፍል ኃላፊ' : 'የፋይናንስ ኃላፊ'));
+    setPhone(user.phone || '');
+    setSignatureUrl(user.signatureUrl || null);
     setPassword('');
     setIsActive(user.isActive);
     setErrorMsg('');
@@ -117,6 +132,9 @@ export default function UsersPage() {
           email,
           role,
           isActive,
+          titleAmharic,
+          phone,
+          signatureUrl,
           ...(password ? { password } : {}),
         });
       } else {
@@ -125,6 +143,9 @@ export default function UsersPage() {
           email,
           role,
           isActive,
+          titleAmharic,
+          phone,
+          signatureUrl,
           password: password || 'Password123!',
         });
       }
@@ -277,6 +298,7 @@ export default function UsersPage() {
                 <tr className="bg-mist/30">
                   <th>{lang === 'am' ? 'የተጠቃሚ ስም / መገለጫ' : 'Staff / User Profile'}</th>
                   <th>{lang === 'am' ? 'ሚና (Role)' : 'Role'}</th>
+                  <th>{lang === 'am' ? 'ዲጂታል ፊርማ' : 'Digital Signature'}</th>
                   <th>{lang === 'am' ? 'ሁኔታ' : 'Status'}</th>
                   <th>{lang === 'am' ? 'የሚያስተምሯቸው ትምህርቶችና ሰዓት' : 'Courses & Timetable'}</th>
                   <th className="text-right">{lang === 'am' ? 'ድርጊት' : 'Actions'}</th>
@@ -309,7 +331,17 @@ export default function UsersPage() {
                                 </span>
                               )}
                             </div>
-                            <span className="text-xs text-slate">{u.email}</span>
+                            <div className="flex items-center gap-2 text-xs text-slate">
+                              <span>{u.email}</span>
+                              {u.phone && (
+                                <span className="flex items-center gap-0.5 text-slate/80">
+                                  • <Phone size={10} /> {u.phone}
+                                </span>
+                              )}
+                            </div>
+                            {u.titleAmharic && (
+                              <p className="text-[11px] text-gold font-medium">{u.titleAmharic}</p>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -328,6 +360,18 @@ export default function UsersPage() {
                           {u.role === 'FINANCE_OFFICER' && <Wallet size={12} />}
                           {t(u.role)}
                         </span>
+                      </td>
+                      <td>
+                        {u.signatureUrl ? (
+                          <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1 rounded-md text-[11px] font-medium w-fit">
+                            <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                            <span>{lang === 'am' ? 'የተመዘገበ ፊርማ' : 'Signature Attached'}</span>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate/60 italic flex items-center gap-1">
+                            <PenTool size={11} /> {lang === 'am' ? 'አልተፈረመም' : 'Not signed'}
+                          </span>
+                        )}
                       </td>
                       <td>
                         <button
@@ -412,38 +456,64 @@ export default function UsersPage() {
         }
         onClose={() => setModalOpen(false)}
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto px-1">
           {errorMsg && (
             <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">
               {errorMsg}
             </div>
           )}
 
-          <div>
-            <label className="label">{lang === 'am' ? 'ሙሉ ስም' : 'Full Name'} *</label>
-            <input
-              type="text"
-              required
-              className="input text-xs w-full"
-              placeholder={lang === 'am' ? 'ለምሳሌ፡ ዳዊት አብርሃም ወይም መ/ር ሮቤል' : 'e.g. Dawit Abreham or Memhir Robel'}
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">{lang === 'am' ? 'ሙሉ ስም' : 'Full Name'} *</label>
+              <input
+                type="text"
+                required
+                className="input text-xs w-full"
+                placeholder={lang === 'am' ? 'ለምሳሌ፡ መምህር ዳዊት አብርሃም' : 'e.g. Teacher Dawit Abreham'}
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="label">{lang === 'am' ? 'ኢሜይል' : 'Email Address'} *</label>
+              <input
+                type="email"
+                required
+                className="input text-xs w-full"
+                placeholder="user@marhahiwot.org"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
           </div>
 
-          <div>
-            <label className="label">{lang === 'am' ? 'ኢሜይል' : 'Email Address'} *</label>
-            <input
-              type="email"
-              required
-              className="input text-xs w-full"
-              placeholder="user@marhahiwot.org"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">{lang === 'am' ? 'የስራ ድርሻ / ማዕረግ (Amharic Title)' : 'Title / Role in Church'}</label>
+              <input
+                type="text"
+                className="input text-xs w-full"
+                placeholder={lang === 'am' ? 'ለምሳሌ፡ የክፍሉ መምህር / የትምህርት ክፍል ኃላፊ' : 'e.g. Class Teacher / Head of Education'}
+                value={titleAmharic}
+                onChange={(e) => setTitleAmharic(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="label">{lang === 'am' ? 'ስልክ ቁጥር' : 'Phone Number'}</label>
+              <input
+                type="text"
+                className="input text-xs w-full"
+                placeholder="0911000000"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">{lang === 'am' ? 'የስርዓት ሚና (Role)' : 'System Role'} *</label>
               <select
@@ -471,6 +541,29 @@ export default function UsersPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
+          </div>
+
+          {/* Interactive Signature Pad */}
+          <div className="pt-2 border-t border-gray-100">
+            <SignaturePad
+              value={signatureUrl}
+              onChange={setSignatureUrl}
+              label={
+                lang === 'am'
+                  ? 'የተጠቃሚው ይፋዊ ዲጂታል ፊርማ (ለሮስተርና ለምስክር ወረቀት ማተሚያ)'
+                  : 'Official Handwritten Signature (for Rosters & Certificates)'
+              }
+              placeholderText={
+                lang === 'am'
+                  ? 'በዚህ ሳጥን ውስጥ ፊርማዎን በጣት ወይም በኮምፒውተር መዳፊት ይሳሉ'
+                  : 'Sign here with mouse or touch screen'
+              }
+            />
+            <p className="text-[11px] text-slate mt-1">
+              {lang === 'am'
+                ? 'ይህ ፊርማ መምህሩ ውጤት ሲያስገባ በሮስተሩ ላይ፣ እንዲሁም የምስክር ወረቀት ሲታተም በሰርተፊኬቱ ላይ በይፋ ይቀመጣል።'
+                : 'This digital signature will appear on submitted grade rosters and on generated student certificates.'}
+            </p>
           </div>
 
           <div className="flex items-center gap-2 pt-2">

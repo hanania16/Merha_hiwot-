@@ -6,6 +6,7 @@ import { useLang } from '@/lib/i18n';
 import { getCurrentUser } from '@/lib/auth';
 import { Topbar } from '@/components/layout/Topbar';
 import { Modal } from '@/components/ui/Modal';
+import { SignaturePad } from '@/components/ui/SignaturePad';
 import {
   Award,
   CheckCircle2,
@@ -18,6 +19,10 @@ import {
   FileText,
   Printer,
   ChevronRight,
+  PenTool,
+  Check,
+  Calendar,
+  Layers,
 } from 'lucide-react';
 
 interface Course {
@@ -39,6 +44,8 @@ interface Student {
   fullName: string;
   fullNameAmharic: string | null;
   gender: string;
+  dateOfBirth?: string;
+  age?: number;
   classId: string;
   class: { id: string; name: string; level: string };
 }
@@ -49,6 +56,7 @@ interface GradeRow {
   fullName: string;
   fullNameAmharic: string | null;
   gender: string;
+  age?: number | null;
   gradeId?: string;
   assessmentScore: number | '';
   midExamScore: number | '';
@@ -58,6 +66,7 @@ interface GradeRow {
   letterGrade: string;
   rank?: number;
   status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'NEW';
+  teacherSignature?: string | null;
   remarks: string;
 }
 
@@ -90,6 +99,11 @@ export default function GradesSubmissionPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
+  // Digital Signature State for Roster
+  const [teacherSignature, setTeacherSignature] = useState<string | null>(null);
+  const [rosterSignature, setRosterSignature] = useState<string | null>(null);
+  const [signModalOpen, setSignModalOpen] = useState(false);
+
   // Report card modal state
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportData, setReportData] = useState<ReportCardData | null>(null);
@@ -104,6 +118,21 @@ export default function GradesSubmissionPage() {
       loadRosterAndGrades();
     }
   }, [selectedCourseId, ethiopianYear, semester]);
+
+  // Load teacher's default signature if logged in
+  useEffect(() => {
+    async function loadTeacherProfile() {
+      if (user?.id) {
+        try {
+          const profile = await api.get<any>(`/users/${user.id}`);
+          if (profile?.signatureUrl) {
+            setTeacherSignature(profile.signatureUrl);
+          }
+        } catch {}
+      }
+    }
+    loadTeacherProfile();
+  }, [user?.id]);
 
   async function loadCourses() {
     try {
@@ -133,6 +162,17 @@ export default function GradesSubmissionPage() {
     return 'F';
   }
 
+  function calculateAge(dobString?: string): number | null {
+    if (!dobString) return null;
+    const dob = new Date(dobString);
+    if (isNaN(dob.getTime())) return null;
+    const now = new Date();
+    let age = now.getFullYear() - dob.getFullYear();
+    const m = now.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age--;
+    return age >= 0 ? age : null;
+  }
+
   async function loadRosterAndGrades() {
     if (!selectedCourseId) return;
     try {
@@ -152,9 +192,14 @@ export default function GradesSubmissionPage() {
       const gradeMap = new Map<string, any>();
       gradesRes.forEach((g) => gradeMap.set(g.studentId, g));
 
+      // Check if there is an existing teacher signature on the roster
+      const existingSig = gradesRes.find((g) => g.teacherSignature)?.teacherSignature || null;
+      setRosterSignature(existingSig);
+
       // 3. Build unified rows
       const rows: GradeRow[] = studentsInClass.map((s) => {
         const existing = gradeMap.get(s.id);
+        const age = s.age ?? calculateAge(s.dateOfBirth);
         if (existing) {
           return {
             studentId: s.id,
@@ -162,6 +207,7 @@ export default function GradesSubmissionPage() {
             fullName: s.fullName,
             fullNameAmharic: s.fullNameAmharic,
             gender: s.gender,
+            age,
             gradeId: existing.id,
             assessmentScore: existing.assessmentScore !== null ? Number(existing.assessmentScore) : '',
             midExamScore: existing.midExamScore !== null ? Number(existing.midExamScore) : '',
@@ -171,6 +217,7 @@ export default function GradesSubmissionPage() {
             letterGrade: existing.letterGrade || computeGradeLetter(Number(existing.totalScore)),
             rank: existing.rank,
             status: existing.status,
+            teacherSignature: existing.teacherSignature || null,
             remarks: existing.remarks || '',
           };
         } else {
@@ -180,6 +227,7 @@ export default function GradesSubmissionPage() {
             fullName: s.fullName,
             fullNameAmharic: s.fullNameAmharic,
             gender: s.gender,
+            age,
             assessmentScore: '',
             midExamScore: '',
             finalExamScore: '',
@@ -234,17 +282,20 @@ export default function GradesSubmissionPage() {
     setGradeRows(updated);
   }
 
-  async function handleBatchSave(submitForApproval: boolean) {
+  async function handleBatchSave(submitForApproval: boolean, signatureToAttach?: string | null) {
     if (!selectedCourseId) return;
     try {
       setSaving(true);
       setMessage(null);
+
+      const sig = signatureToAttach !== undefined ? signatureToAttach : teacherSignature;
 
       const payload = {
         courseId: selectedCourseId,
         ethiopianYear,
         semester,
         submitForApproval,
+        teacherSignature: sig || undefined,
         grades: gradeRows.map((r) => ({
           studentId: r.studentId,
           assessmentScore: typeof r.assessmentScore === 'number' ? r.assessmentScore : 0,
@@ -259,13 +310,14 @@ export default function GradesSubmissionPage() {
       setMessage({
         text: submitForApproval
           ? lang === 'am'
-            ? 'የተማሪዎች ውጤት በተሳካ ሁኔታ ለውሳኔና ለማፅደቅ ተልኳል!'
-            : 'Grades successfully submitted to administration for review!'
+            ? 'የተማሪዎች ውጤት ከመምህሩ ይፋዊ ፊርማ ጋር ለውሳኔና ለማፅደቅ ተልኳል!'
+            : 'Grades successfully submitted to administration with your digital signature!'
           : lang === 'am'
           ? 'ረቂቅ ውጤቶች በተሳካ ሁኔታ ተቀምጠዋል!'
           : 'Draft grades successfully saved!',
         type: 'success',
       });
+      setSignModalOpen(false);
       await loadRosterAndGrades();
     } catch (err: any) {
       setMessage({
@@ -335,12 +387,12 @@ export default function GradesSubmissionPage() {
             {lang === 'am' ? 'እንደ ረቂቅ አስቀምጥ' : 'Save Draft'}
           </button>
           <button
-            onClick={() => handleBatchSave(true)}
+            onClick={() => setSignModalOpen(true)}
             disabled={saving || gradeRows.length === 0}
-            className="btn-gold flex items-center gap-1.5 text-xs sm:text-sm font-semibold"
+            className="btn-gold flex items-center gap-1.5 text-xs sm:text-sm font-semibold shadow-md"
           >
             <Send size={16} />
-            {lang === 'am' ? 'ለውሳኔ ላክ (አስረክብ)' : 'Submit Points to Admin'}
+            {lang === 'am' ? 'በፊርማ አረጋግጠህ ላክ' : 'Sign & Submit Roster'}
           </button>
           {isAdmin && (
             <button
@@ -355,24 +407,102 @@ export default function GradesSubmissionPage() {
         </div>
       </Topbar>
 
-      {/* Filter and Selection Card */}
-      <div className="card p-4 sm:p-5">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div>
-            <label className="label">{lang === 'am' ? 'የክፍል ደረጃ' : 'Class Level'}</label>
-            <select
-              className="input font-medium"
-              value={classLevel}
-              onChange={(e) => setClassLevel(e.target.value)}
-            >
-              <option value="CLASS_1_3">{lang === 'am' ? 'ክፍል 1-3 (Class 1-3)' : 'Class 1-3'}</option>
-              <option value="CLASS_4_6">{lang === 'am' ? 'ክፍል 4-6 (Class 4-6)' : 'Class 4-6'}</option>
-              <option value="CLASS_7_12">{lang === 'am' ? 'ክፍል 7-12 (Class 7-12)' : 'Class 7-12'}</option>
-            </select>
+      {/* Tabs & Filter Bar */}
+      <div className="card p-4 sm:p-5 space-y-4">
+        {/* 1. Interactive Semester / Term Tabs */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-slate uppercase tracking-wider flex items-center gap-1.5">
+              <Calendar size={13} className="text-gold" />
+              {lang === 'am' ? 'መንፈቀ ዓመት ይምረጡ (Select Semester / Term)' : 'Select Semester / Term'}
+            </span>
+            {rosterSignature && (
+              <span className="text-[11px] bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                <CheckCircle2 size={12} className="text-emerald-600" />
+                {lang === 'am' ? 'የመምህሩ ፊርማ ተያይዟል' : 'Teacher Signature Attached'}
+              </span>
+            )}
           </div>
+          <div className="grid grid-cols-3 gap-2 bg-mist/40 p-1.5 rounded-xl border border-gray-200">
+            <button
+              type="button"
+              onClick={() => setSemester('SEMESTER_1')}
+              className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                semester === 'SEMESTER_1'
+                  ? 'bg-gold text-ink shadow-sm'
+                  : 'text-slate hover:text-ink hover:bg-white/60'
+              }`}
+            >
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono ${
+                semester === 'SEMESTER_1' ? 'bg-ink text-gold' : 'bg-gray-200 text-slate'
+              }`}>
+                1
+              </span>
+              <span>{lang === 'am' ? '1ኛ መንፈቀ ዓመት (Term 1)' : '1st Semester'}</span>
+            </button>
 
+            <button
+              type="button"
+              onClick={() => setSemester('SEMESTER_2')}
+              className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                semester === 'SEMESTER_2'
+                  ? 'bg-gold text-ink shadow-sm'
+                  : 'text-slate hover:text-ink hover:bg-white/60'
+              }`}
+            >
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono ${
+                semester === 'SEMESTER_2' ? 'bg-ink text-gold' : 'bg-gray-200 text-slate'
+              }`}>
+                2
+              </span>
+              <span>{lang === 'am' ? '2ኛ መንፈቀ ዓመት (Term 2)' : '2nd Semester'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSemester('YEAR_ROUND')}
+              className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                semester === 'YEAR_ROUND'
+                  ? 'bg-gold text-ink shadow-sm'
+                  : 'text-slate hover:text-ink hover:bg-white/60'
+              }`}
+            >
+              <span>{lang === 'am' ? 'ዓመታዊ ማጠቃለያ (Annual)' : 'Year-Round'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 2. Class Level Tabs */}
+        <div>
+          <span className="text-xs font-semibold text-slate uppercase tracking-wider block mb-2">
+            {lang === 'am' ? 'የክፍል ደረጃ (Class Level)' : 'Class Level'}
+          </span>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: 'CLASS_1_3', labelAm: 'ክፍል 1-3 (ከ1ኛ እስከ 3ኛ ክፍል)', labelEn: 'Classes 1-3' },
+              { id: 'CLASS_4_6', labelAm: 'ክፍል 4-6 (ከ4ኛ እስከ 6ኛ ክፍል)', labelEn: 'Classes 4-6' },
+              { id: 'CLASS_7_12', labelAm: 'ክፍል 7-12 (ከ7ኛ እስከ 12ኛ ክፍል)', labelEn: 'Classes 7-12' },
+            ].map((lvl) => (
+              <button
+                key={lvl.id}
+                type="button"
+                onClick={() => setClassLevel(lvl.id)}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  classLevel === lvl.id
+                    ? 'bg-ink text-white shadow'
+                    : 'bg-gray-100 text-slate hover:bg-gray-200'
+                }`}
+              >
+                {lang === 'am' ? lvl.labelAm : lvl.labelEn}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 3. Course and Year Filters */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-gray-100">
           <div>
-            <label className="label">{lang === 'am' ? 'የትምህርት ዓይነት (Subject)' : 'Subject / Course'}</label>
+            <label className="label">{lang === 'am' ? 'የትምህርት ዓይነት (Subject / Course)' : 'Course / Subject'}</label>
             <select
               className="input font-semibold text-gold bg-zinc-900 border-zinc-700"
               value={selectedCourseId}
@@ -392,7 +522,7 @@ export default function GradesSubmissionPage() {
           <div>
             <label className="label">{lang === 'am' ? 'የትምህርት ዘመን (ዓ.ም)' : 'Academic Year'}</label>
             <select
-              className="input"
+              className="input font-medium"
               value={ethiopianYear}
               onChange={(e) => setEthiopianYear(Number(e.target.value))}
             >
@@ -401,24 +531,11 @@ export default function GradesSubmissionPage() {
               <option value={2019}>2019 ዓ.ም</option>
             </select>
           </div>
-
-          <div>
-            <label className="label">{lang === 'am' ? 'መንፈቀ ዓመት (Semester)' : 'Semester'}</label>
-            <select
-              className="input"
-              value={semester}
-              onChange={(e) => setSemester(e.target.value)}
-            >
-              <option value="SEMESTER_1">{lang === 'am' ? '1ኛ መንፈቀ ዓመት' : '1st Semester'}</option>
-              <option value="SEMESTER_2">{lang === 'am' ? '2ኛ መንፈቀ ዓመት' : '2nd Semester'}</option>
-              <option value="YEAR_ROUND">{lang === 'am' ? 'ዓመታዊ ማጠቃለያ' : 'Year Round'}</option>
-            </select>
-          </div>
         </div>
 
         {/* Selected Course Sub-Header */}
         {selectedCourse && (
-          <div className="mt-4 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between text-xs gap-2">
+          <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between text-xs gap-2">
             <div className="flex items-center gap-2">
               <span className="font-bold text-ink">
                 {selectedCourse.code}: {lang === 'am' ? selectedCourse.nameAmharic : selectedCourse.name}
@@ -456,7 +573,7 @@ export default function GradesSubmissionPage() {
           <div className="flex items-center gap-2">
             <Award className="text-gold" size={18} />
             <h3 className="font-bold text-sm text-ink">
-              {lang === 'am' ? 'የውጤት ማሟያ ዝርዝር' : 'Class Grade Worksheet'}
+              {lang === 'am' ? 'የውጤት ማሟያ ዝርዝር (የተማሪዎች ሮስተር)' : 'Class Grade Worksheet & Student Directory'}
             </h3>
             <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-slate">
               {filteredRows.length} {lang === 'am' ? 'ተማሪዎች' : 'students'}
@@ -488,12 +605,13 @@ export default function GradesSubmissionPage() {
                 <tr className="bg-mist/30">
                   <th className="w-16">{lang === 'am' ? 'መለያ' : 'ID'}</th>
                   <th className="min-w-[140px]">{lang === 'am' ? 'የተማሪው ስም' : 'Student Name'}</th>
+                  <th className="w-24 text-center">{lang === 'am' ? 'ዕድሜ / ፆታ' : 'Age / Gender'}</th>
                   <th className="w-24 text-center">{lang === 'am' ? 'ምዘና (20)' : 'Assess (20)'}</th>
                   <th className="w-24 text-center">{lang === 'am' ? 'አጋማሽ (30)' : 'Mid (30)'}</th>
                   <th className="w-24 text-center">{lang === 'am' ? 'ማጠቃለያ (40)' : 'Final (40)'}</th>
                   <th className="w-24 text-center">{lang === 'am' ? 'ሥነ ምግባር (10)' : 'Conduct (10)'}</th>
                   <th className="w-20 text-center font-bold text-ink">{lang === 'am' ? 'ድምር' : 'Total'}</th>
-                  <th className="w-16 text-center">{lang === 'am' ? 'ደረጃ' : 'Grade'}</th>
+                  <th className="w-16 text-center">{lang === 'am' ? 'ውጤት' : 'Grade'}</th>
                   <th className="w-16 text-center">{lang === 'am' ? 'ደረጃ' : 'Rank'}</th>
                   <th className="w-24 text-center">{lang === 'am' ? 'ሁኔታ' : 'Status'}</th>
                   <th className="min-w-[140px]">{lang === 'am' ? 'የመምህሩ አስተያየት' : 'Teacher Remark'}</th>
@@ -507,12 +625,20 @@ export default function GradesSubmissionPage() {
                     <tr key={row.studentId} className="hover:bg-amber-50/20">
                       <td className="font-mono text-xs text-slate">{row.studentCode}</td>
                       <td>
-                        <p className="font-medium text-xs text-ink">
+                        <p className="font-semibold text-xs text-ink">
                           {lang === 'am' && row.fullNameAmharic ? row.fullNameAmharic : row.fullName}
                         </p>
                         {lang === 'am' && row.fullNameAmharic && (
                           <p className="text-[10px] text-slate">{row.fullName}</p>
                         )}
+                      </td>
+                      <td className="text-center text-xs text-slate whitespace-nowrap">
+                        <span className="font-medium text-ink">
+                          {row.age !== null && row.age !== undefined ? `${row.age} ዓመት` : '—'}
+                        </span>
+                        <span className="text-[10px] block text-slate/70">
+                          {row.gender === 'MALE' ? (lang === 'am' ? 'ወንድ' : 'M') : (lang === 'am' ? 'ሴት' : 'F')}
+                        </span>
                       </td>
                       <td>
                         <input
@@ -698,6 +824,55 @@ export default function GradesSubmissionPage() {
             </div>
           )}
         </Modal>
+
+      {/* Teacher Signature Submission Modal */}
+      <Modal
+        open={signModalOpen}
+        title={lang === 'am' ? 'የውጤት ሮስተር ማረጋገጫና የመምህር ፊርማ' : 'Roster Submission & Teacher Signature'}
+        onClose={() => setSignModalOpen(false)}
+      >
+        <div className="space-y-4">
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-start gap-2">
+            <Award size={16} className="text-amber-700 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">
+                {selectedCourse ? (lang === 'am' ? selectedCourse.nameAmharic : selectedCourse.name) : ''} ({ethiopianYear} ዓ.ም - {semester === 'SEMESTER_1' ? '1ኛ መንፈቀ ዓመት' : semester === 'SEMESTER_2' ? '2ኛ መንፈቀ ዓመት' : 'ዓመታዊ'})
+              </p>
+              <p className="mt-1">
+                {lang === 'am'
+                  ? `ለ${gradeRows.length} ተማሪዎች የተሞላው ውጤት ወደ ትምህርት ክፍል አስተዳደር ይላካል። እባክዎ ከታች ባለው ሰሌዳ ላይ ፊርማዎን በማኖር ውሳኔውን ያረጋግጡ።`
+                  : `Submitting marks for ${gradeRows.length} students to administration. Please sign below to authenticate this roster.`}
+              </p>
+            </div>
+          </div>
+
+          <SignaturePad
+            value={teacherSignature}
+            onChange={setTeacherSignature}
+            label={lang === 'am' ? 'የመምህሩ ይፋዊ ፊርማ (Teacher Signature)' : 'Teacher Signature'}
+            placeholderText={lang === 'am' ? 'በዚህ ሳጥን ውስጥ ፊርማዎን ይሳሉ' : 'Draw your signature here'}
+          />
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => setSignModalOpen(false)}
+              className="btn-outline text-xs"
+            >
+              {t('cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleBatchSave(true, teacherSignature)}
+              disabled={saving}
+              className="btn-gold text-xs font-semibold flex items-center gap-1.5 shadow-md"
+            >
+              <Send size={14} />
+              {saving ? t('saving') : (lang === 'am' ? 'በፊርማ አረጋግጠህ ላክ (Submit)' : 'Confirm & Submit')}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

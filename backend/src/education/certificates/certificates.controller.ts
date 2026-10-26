@@ -38,6 +38,15 @@ export class CertificatesController {
   }
 
   @Roles(Role.ADMINISTRATOR)
+  @Post('generate-class')
+  generateClass(
+    @Body() dto: any,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.certsService.generateClassCertificates(dto, user.userId);
+  }
+
+  @Roles(Role.ADMINISTRATOR)
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.certsService.remove(id);

@@ -183,6 +183,9 @@ model User {
   passwordHash String
   role         Role
   isActive     Boolean  @default(true)
+  signatureUrl String?
+  titleAmharic String?
+  phone        String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -612,6 +615,7 @@ model StudentGrade {
   rank            Int?
   status          GradeStatus      @default(SUBMITTED)
   remarks         String?
+  teacherSignature String?
   submittedById   String?
   submittedBy     User?            @relation("GradeSubmittedBy", fields: [submittedById], references: [id])
   approvedById    String?
@@ -657,12 +661,21 @@ model CertificateRecord {
   bibleVerseAmharic    String?
   overallGrade         String?
   rankText             String?
+  numberOfCourses      Int?
+  totalScore           Decimal?            @db.Decimal(6, 2)
+  averageScore         Decimal?            @db.Decimal(5, 2)
+  rankInClass          Int?
+  totalStudentsInClass Int?
+  courseBreakdown      Json?
   signatory1Title      String              @default("የክፍሉ መምህር")
   signatory1Name       String              @default("መምህር ተክለ ማርያም")
+  signatory1Signature  String?
   signatory2Title      String              @default("የትምህርት ክፍል ኃላፊ")
   signatory2Name       String              @default("ዲ/ን ዮሐንስ")
+  signatory2Signature  String?
   signatory3Title      String              @default("የሰ/ት/ቤቱ ሰብሳቢ")
   signatory3Name       String              @default("መጋቤ ሐዲስ")
+  signatory3Signature  String?
   borderStyle          String              @default("ETHIOPIC_GOLD_DOUBLE")
   themeColor           String              @default("#D4AF37")
   createdById          String?
@@ -671,4 +684,23 @@ model CertificateRecord {
   updatedAt            DateTime            @updatedAt
 
   @@map("certificate_records")
+}
+
+model SystemSetting {
+  id                   String   @id @default("default")
+  systemNameAmharic    String   @default("መርሃ ህይወት ሰንበት ትምህርት ቤት")
+  systemNameEnglish    String   @default("Merha Hiwot Sunday School")
+  churchNameAmharic    String   @default("ደብረ አሚን ተክለ ሃይማኖት ቤተ ክርስቲያን")
+  churchNameEnglish    String   @default("Debre Amin Teklehaimanot Church")
+  mottoAmharic         String?  @default("ሕፃናትን ወደ እኔ ይመጡ ዘንድ ተዉአቸው፤ አትከልክሏቸውም፤ የእግዚአብሔር መንግሥት እንደ እነዚህ ላሉት ናትና።")
+  primaryColorHex      String   @default("#1E3A8A")
+  accentColorHex       String   @default("#D4AF37")
+  logoUrl              String?
+  currentAcademicYear  Int      @default(2018)
+  defaultPassingScore  Decimal  @default(50.00) @db.Decimal(5, 2)
+  teachingAdminName    String?  @default("ዲ/ን ዮሐንስ")
+  churchAdminName      String?  @default("መጋቤ ሐዲስ")
+  updatedAt            DateTime @updatedAt
+
+  @@map("system_settings")
 }

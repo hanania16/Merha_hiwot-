@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Wallet, TrendingDown, FileBarChart, PieChart, Receipt,
-  LogOut, X, GraduationCap, Award, Scroll, MessageSquare, BookOpen, Users,
+  LogOut, X, GraduationCap, Award, Scroll, MessageSquare, BookOpen, Users, Sliders,
 } from 'lucide-react';
 import { logout, getCurrentUser } from '@/lib/auth';
 import { useLang } from '@/lib/i18n';
@@ -31,6 +31,7 @@ const FINANCE_NAV = [
 const ADMIN_NAV = [
   { href: '/dashboard/admin/students', key: 'studentsManagement', icon: GraduationCap },
   { href: '/dashboard/users', key: 'userManagement', icon: Users },
+  { href: '/dashboard/settings', key: 'systemSettings', icon: Sliders },
   { href: '/dashboard/admin', key: 'adminReports', icon: LayoutDashboard },
 ];
 
